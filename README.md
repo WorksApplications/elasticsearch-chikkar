@@ -1,7 +1,11 @@
 # elasticsearch-chikkar
+
+[![Build Status](https://travis-ci.com/WorksApplications/elasticsearch-chikkar.svg?branch=develop)](https://travis-ci.com/WorksApplications/elasticsearch-chikkar)
+
 A synonym token filter plugin for Elasticsearch
 
 # usage example:
+
 suppose we use `Sudachi` for tokenizer.
 
 ## use synonym dictionaries in text format
