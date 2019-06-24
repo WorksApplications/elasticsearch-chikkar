@@ -23,6 +23,8 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
+
 import static java.lang.Character.isDigit;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -316,8 +318,8 @@ class DictionaryManager implements Serializable {
         // set the default relationSet as sparse matrix
         RelationManager.RelationMatrix relationMatrix = relationMgn.getRelationMatrix();
 
-        try {
-            Files.lines(Paths.get(dictPath), StandardCharsets.UTF_8).forEach(line -> {
+        try (Stream<String> input = Files.lines(Paths.get(dictPath), StandardCharsets.UTF_8)) {
+            input.forEach(line -> {
                 ArrayList<Integer> basewords = new ArrayList<>();
                 ArrayList<Integer> relatives = new ArrayList<>();
                 LoadResult loadResult = loadDictionaryLine(analyzer, line, basewords, relatives, restrictMode);
@@ -420,12 +422,10 @@ class DictionaryManager implements Serializable {
     void mergeLine(ArrayList<Integer> basewords, ArrayList<Integer> relatives,
             RelationManager.RelationMatrix relationMatrix, String semanticTag) {
         ArrayList<Integer> previous = new ArrayList<>();
-        basewords.forEach(a -> {
-            if (semanticTag == relationMatrix.getSemanticTag(a)
-                    || semanticTag.equals(relationMatrix.getSemanticTag(a))) {
-                previous.addAll(relationMatrix.getRelations(a));
-            }
-        });
+        basewords.stream()
+                .filter(a -> (relationMatrix.getSemanticTag(a) == null && semanticTag == null)
+                        || relationMatrix.getSemanticTag(a).equals(semanticTag))
+                .forEach(a -> previous.addAll(relationMatrix.getRelations(a)));
         relatives.forEach(a -> previous.forEach(b -> {
             // Todo check if the semantic tag is the same
             relationMatrix.add(a, b, semanticTag);
