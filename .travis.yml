@@ -1,0 +1,17 @@
+language: java
+jdk: oraclejdk8
+dist: trusty
+install: true
+before_deploy:
+- mvn package
+deploy:
+  provider: releases
+  api_key:
+    secure: G2BSSk2d2VYiGi6YXPrbKXj4fIuSURDrFGUFTi1s3ZUNts/6S1fIpLc8jZ6mp/S09cNaJTh1Pzx3tVk8oH7YfLvsVgvcedXKZVs7NuvIHS+wOwq+9K9X+oVtOW4D5gudk4iyw3/z2utShcVHvkBGzJGSqb681EShaZ9hEmtTmkzo8qlb8+9d+eRHvh4boCivRsqm9ORxxRhkOLUzMDN4EfgHxVggwKolp/lRI2ShTk9vz7buzuu1o7TPp8a+E3M0OwAT/Q5VmsfmD7O6EEMERV4eN85wZDIZCKvqwcUVpkYPFNkBA0w1YuT4QHlp+zDrVaZ4gf62XQ4q1s4BZLjnjgDnE3GUPeQAlVQte89p73x/GdlGYP2lQb72NWumjH4RQV6bvm6ytHCYp5337nt32+CCPYDqVhd7jHwRvKyz+b7zWlJyUvI8/yyQqj802ZNZJ/yNSNEQKx/571Cx3yPosnMw0BNCP0oBTXn6UYB0vpnLP3W44h2SgU/FVH03k1yNtGxjccBI8+JI0UAwyPCtEHzaW9pzP7p5w8u0qrcT4Wi0D1Qe1HoWAow+PwkZBVPtx3H+D+ECtVio3PmGtDkgUEsHkx4J+z9rifnfNmAHCYSyArUyK5cCiclVMFZCIa+15Q2vP3lUbcdA1QKC4ou6JZyzrap0jQurflHxZfgAwX0=
+  file_glob: true
+  file: 'target/releases/*.zip'
+  overwrite: true
+  skip_cleanup: true
+  on:
+    repo: WorksApplications/elasticsearch-chikkar
+    tags: true
