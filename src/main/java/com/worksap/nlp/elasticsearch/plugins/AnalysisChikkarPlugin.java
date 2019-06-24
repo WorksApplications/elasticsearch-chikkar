@@ -16,24 +16,82 @@
 
 package com.worksap.nlp.elasticsearch.plugins;
 
+import static java.util.Collections.singletonList;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.elasticsearch.client.Client;
+import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.common.component.LifecycleComponent;
+import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.xcontent.NamedXContentRegistry;
+import org.elasticsearch.env.Environment;
+import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.index.analysis.AnalysisRegistry;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
-import org.elasticsearch.indices.analysis.AnalysisModule;
+import org.elasticsearch.indices.analysis.AnalysisModule.AnalysisProvider;
 import org.elasticsearch.plugins.AnalysisPlugin;
 import org.elasticsearch.plugins.Plugin;
+import org.elasticsearch.script.ScriptService;
+import org.elasticsearch.threadpool.ThreadPool;
+import org.elasticsearch.watcher.ResourceWatcherService;
 
 import com.worksap.nlp.elasticsearch.plugins.analysis.ChikkarSynonymTokenFilterFactory;
+import com.worksap.nlp.elasticsearch.plugins.service.ChikkarSynonymAnalysisService;
 
 public class AnalysisChikkarPlugin extends Plugin implements AnalysisPlugin {
+
+    private final PluginComponent pluginComponent = new PluginComponent();
 
     public static final String CHIKKAR_PLUGIN_NAME = "chikkar_synonym";
 
     @Override
-    public Map<String, AnalysisModule.AnalysisProvider<TokenFilterFactory>> getTokenFilters() {
-        Map<String, AnalysisModule.AnalysisProvider<TokenFilterFactory>> tokenFilters = new HashMap<>();
-        tokenFilters.put(CHIKKAR_PLUGIN_NAME, ChikkarSynonymTokenFilterFactory::new);
+    public Collection<Class<? extends LifecycleComponent>> getGuiceServiceClasses() {
+        return singletonList(ChikkarSynonymAnalysisService.class);
+    }
+
+    @Override
+    public Collection<Object> createComponents(Client client, ClusterService clusterService, ThreadPool threadPool,
+            ResourceWatcherService resourceWatcherService, ScriptService scriptService,
+            NamedXContentRegistry xContentRegistry) {
+        final Collection<Object> components = new ArrayList<>();
+        components.add(pluginComponent);
+        return components;
+    }
+
+    @Override
+    public Map<String, AnalysisProvider<TokenFilterFactory>> getTokenFilters() {
+        final Map<String, AnalysisProvider<TokenFilterFactory>> tokenFilters = new HashMap<>();
+        tokenFilters.put(CHIKKAR_PLUGIN_NAME, new AnalysisProvider<TokenFilterFactory>() {
+            @Override
+            public TokenFilterFactory get(final IndexSettings indexSettings, final Environment environment,
+                    final String name, final Settings settings) throws IOException {
+                return new ChikkarSynonymTokenFilterFactory(indexSettings, environment, name, settings,
+                        pluginComponent.getAnalysisRegistry());
+            }
+
+            @Override
+            public boolean requiresAnalysisSettings() {
+                return true;
+            }
+        });
         return tokenFilters;
     }
+
+    public static class PluginComponent {
+        private AnalysisRegistry analysisRegistry;
+
+        public AnalysisRegistry getAnalysisRegistry() {
+            return analysisRegistry;
+        }
+
+        public void setAnalysisRegistry(final AnalysisRegistry analysisRegistry) {
+            this.analysisRegistry = analysisRegistry;
+        }
+    }
+
 }
