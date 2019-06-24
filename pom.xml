@@ -51,8 +51,8 @@
         <maven.compiler.target>1.8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <log4j.version>2.9.1</log4j.version>
-        <lucene.version>8.0.0</lucene.version>
-        <elasticsearch.version>7.1.1</elasticsearch.version>
+        <lucene.version>6.6.3</lucene.version>
+        <elasticsearch.version>5.6.16</elasticsearch.version>
         <elasticsearch.plugin.classname>com.worksap.nlp.elasticsearch.plugins.AnalysisChikkarPlugin</elasticsearch.plugin.classname>
         <sudachi.version>0.2.0</sudachi.version>
     </properties>

@@ -1,6 +1,10 @@
 # elasticsearch-chikkar
 A synonym token filter plugin for Elasticsearch
 
+* For `ES 5.X` and `ES 6.0`, the highlighting functions may not work as expected when using this synonym token filter. The reason is that these versions of Elasticsearch don't have a feature [auto_generate_synonyms_phrase_query ](https://github.com/elastic/elasticsearch/pull/26097). It is the problem of Elasticsearch which is beyond control of this plugin.
+
+* For `ES 6.1` and higher versions, this `auto_generate_synonyms_phrase_query` featured are merged to Elasticsearch, so the highlighting functions can work well. It is recommended that this plugin is used in `ES 6.1` or higher versions.
+
 # usage example:
 suppose we use `Sudachi` for tokenizer.
 
@@ -49,12 +53,14 @@ suppose we use `Sudachi` for tokenizer.
     }
   },
   "mappings": {
-    "properties": {
-        "content": {
-            "type": "text",
-            "analyzer": "sudachi_analyzer_no_synonym",
-            "search_analyzer": "sudachi_analyzer_chikkar_synonym",
-            "term_vector": "with_positions_offsets"
+    "doc": {
+        "properties": {
+            "content": {
+                "type": "text",
+                "analyzer": "sudachi_analyzer_no_synonym",
+                "search_analyzer": "sudachi_analyzer_chikkar_synonym",
+                "term_vector": "with_positions_offsets"
+            }
         }
     }
   }
@@ -107,12 +113,14 @@ For big dictionaries, it is much faster using the pre-built binary format of the
     }
   },
   "mappings": {
-    "properties": {
-        "content": {
-            "type": "text",
-            "analyzer": "sudachi_analyzer_no_synonym",
-            "search_analyzer": "sudachi_analyzer_chikkar_synonym",
-            "term_vector": "with_positions_offsets"
+    "doc": {
+        "properties": {
+            "content": {
+                "type": "text",
+                "analyzer": "sudachi_analyzer_no_synonym",
+                "search_analyzer": "sudachi_analyzer_chikkar_synonym",
+                "term_vector": "with_positions_offsets"
+            }
         }
     }
   }
