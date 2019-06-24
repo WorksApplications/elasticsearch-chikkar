@@ -62,8 +62,8 @@ public class ChikkarSynonymTokenFilterTest {
         List<CharFilterFactory> charFilters = new ArrayList<>();
         List<TokenFilterFactory> tokenFilters = new ArrayList<>();
 
-        analyzer = new CustomAnalyzer("synonyms", tokenizer, charFilters.toArray(new CharFilterFactory[0]),
-                tokenFilters.stream().map(TokenFilterFactory::getSynonymFilter).toArray(TokenFilterFactory[]::new));
+        analyzer = new CustomAnalyzer(tokenizer, charFilters.toArray(new CharFilterFactory[0]),
+                tokenFilters.toArray(new TokenFilterFactory[0]));
 
         tempFolder.create();
         Path configPath = Paths.get(tempFolder.getRoot().getAbsolutePath());
@@ -273,6 +273,11 @@ public class ChikkarSynonymTokenFilterTest {
     }
 
     class WhitespaceTokenizerFactory implements TokenizerFactory {
+        @Override
+        public String name() {
+            return "WhitespaceTokenizerFactory";
+        }
+
         @Override
         public Tokenizer create() {
             return new WhitespaceTokenizer();
