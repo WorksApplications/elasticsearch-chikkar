@@ -1,0 +1,20 @@
+# IDE
+.metadata
+.project
+.classpath
+.checkstyle
+.factorypath
+.settings/
+*.iml
+.idea
+
+# temporary
+*.log
+*.bak
+*~
+*#
+
+# build
+target/
+build/
+bin/
