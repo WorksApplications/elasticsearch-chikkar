@@ -16,23 +16,25 @@
 
 package com.worksap.nlp.elasticsearch.plugins.analysis;
 
+import java.io.IOException;
 import java.util.List;
-import java.util.function.Function;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.core.LowerCaseFilter;
+import org.apache.lucene.analysis.core.WhitespaceTokenizer;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractTokenFilterFactory;
-import org.elasticsearch.index.analysis.CharFilterFactory;
-import org.elasticsearch.index.analysis.CustomAnalyzer;
-import org.elasticsearch.index.analysis.TokenFilterFactory;
+import org.elasticsearch.index.analysis.AnalysisRegistry;
 import org.elasticsearch.index.analysis.TokenizerFactory;
 
 import com.worksap.nlp.elasticsearch.plugins.chikkar.Chikkar;
+import org.elasticsearch.indices.analysis.AnalysisModule;
 
 public class ChikkarSynonymTokenFilterFactory extends AbstractTokenFilterFactory {
 
@@ -44,6 +46,7 @@ public class ChikkarSynonymTokenFilterFactory extends AbstractTokenFilterFactory
     private final String dictBinPath;
     protected final Settings settings;
     protected final Environment environment;
+    private final ChikkarSynonymMap synonyms;
 
     /**
      * Constructor with argument
@@ -56,9 +59,13 @@ public class ChikkarSynonymTokenFilterFactory extends AbstractTokenFilterFactory
      *            Name of this token filter
      * @param settings
      *            {@link Settings} of this token filter
+     * @param analysisRegistry
+     *            {@link AnalysisRegistry} of elasticsearch server
+     * @throws IOException
+     *             throwS IOException if fail to create synonym token filter
      */
     public ChikkarSynonymTokenFilterFactory(IndexSettings indexSettings, Environment env, String name,
-            Settings settings) {
+            Settings settings, AnalysisRegistry analysisRegistry) throws IOException {
         super(indexSettings, name, settings);
 
         // get the filter setting params
@@ -68,41 +75,34 @@ public class ChikkarSynonymTokenFilterFactory extends AbstractTokenFilterFactory
         this.dictBinPath = settings.get("dict_bin_path");
         this.settings = settings;
         this.environment = env;
+
+        String tokenizerName = settings.get("tokenizer", "whitespace");
+        AnalysisModule.AnalysisProvider<TokenizerFactory> tokenizerFactoryFactory = analysisRegistry
+                .getTokenizerProvider(tokenizerName, indexSettings);
+        if (tokenizerFactoryFactory == null) {
+            throw new IllegalArgumentException(
+                    "failed to find tokenizer [" + tokenizerName + "] for " + "chikkar synonym token filter");
+        }
+
+        final TokenizerFactory tokenizerFactory = tokenizerFactoryFactory.get(indexSettings, env, tokenizerName,
+                AnalysisRegistry.getSettingsFromIndexSettings(indexSettings,
+                        AnalysisRegistry.INDEX_ANALYSIS_TOKENIZER + "." + tokenizerName));
+
+        Analyzer analyzer = new Analyzer() {
+            @Override
+            protected TokenStreamComponents createComponents(String fieldName) {
+                Tokenizer tokenizer = tokenizerFactory == null ? new WhitespaceTokenizer() : tokenizerFactory.create();
+                TokenStream stream = ignoreCase ? new LowerCaseFilter(tokenizer) : tokenizer;
+                return new TokenStreamComponents(tokenizer, stream);
+            }
+        };
+
+        this.synonyms = buildSynonyms(analyzer);
     }
 
     @Override
     public TokenStream create(TokenStream tokenStream) {
-        throw new IllegalStateException(
-                "Call createPerAnalyzerSynonymFactory to specialize this factory for an analysis chain first");
-    }
-
-    @Override
-    public TokenFilterFactory getChainAwareTokenFilterFactory(TokenizerFactory tokenizer,
-            List<CharFilterFactory> charFilters, List<TokenFilterFactory> previousTokenFilters,
-            Function<String, TokenFilterFactory> allFilters) {
-        final Analyzer analyzer = buildSynonymAnalyzer(tokenizer, charFilters, previousTokenFilters);
-
-        final ChikkarSynonymMap synonyms = buildSynonyms(analyzer);
-
-        final String name = name();
-        return new TokenFilterFactory() {
-            @Override
-            public String name() {
-                return name;
-            }
-
-            @Override
-            public TokenStream create(TokenStream tokenStream) {
-                return synonyms.fst == null ? tokenStream
-                        : new ChikkarSynonymTokenFilter(tokenStream, synonyms, ignoreCase);
-            }
-        };
-    }
-
-    Analyzer buildSynonymAnalyzer(TokenizerFactory tokenizer, List<CharFilterFactory> charFilters,
-            List<TokenFilterFactory> tokenFilters) {
-        return new CustomAnalyzer("synonyms", tokenizer, charFilters.toArray(new CharFilterFactory[0]),
-                tokenFilters.stream().map(TokenFilterFactory::getSynonymFilter).toArray(TokenFilterFactory[]::new));
+        return synonyms.fst == null ? tokenStream : new ChikkarSynonymTokenFilter(tokenStream, synonyms, ignoreCase);
     }
 
     ChikkarSynonymMap buildSynonyms(Analyzer analyzer) {
