@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.worksap.nlp</groupId>
-    <artifactId>analysis-chikkar</artifactId>
+    <artifactId>analysis-chikkar7.1</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 

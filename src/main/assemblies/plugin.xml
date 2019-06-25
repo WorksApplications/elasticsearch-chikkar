@@ -17,6 +17,7 @@
 			<useTransitiveFiltering>true</useTransitiveFiltering>
 			<excludes>
 				<exclude>org.elasticsearch:elasticsearch</exclude>
+				<exclude>com.fasterxml.jackson.core:jackson-core</exclude>
 			</excludes>
 		</dependencySet>
 	</dependencySets>
