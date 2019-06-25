@@ -27,6 +27,8 @@ import java.util.stream.Stream;
 
 import static java.lang.Character.isDigit;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -46,6 +48,8 @@ import com.worksap.nlp.elasticsearch.plugins.analysis.ChikkarSynonymMap;
  */
 
 class DictionaryManager implements Serializable {
+    private static final Logger log = LogManager.getLogger(DictionaryManager.class);
+
     EntryManager entryMgn;
 
     private static DictionaryManager dictMgn;
@@ -243,9 +247,9 @@ class DictionaryManager implements Serializable {
                             if (entryMgn.retrieveEntry(res, null, null, semanticTag).isEmpty()) {
                                 entryMgn.insertEntry(res, new Entry(null, null, semanticTag));
                             }
-                            if (left == true && i == 0) {
+                            if (left && i == 0) {
                                 basewords.add(entryMgn.retrieveEntry(res, null, null, semanticTag).get(0));
-                            } else if (left == false && i == directions.length - 1) {
+                            } else if (!left && i == directions.length - 1) {
                                 basewords.add(entryMgn.retrieveEntry(res, null, null, semanticTag).get(0));
                             } else {
                                 relatives.add(entryMgn.retrieveEntry(res, null, null, semanticTag).get(0));
@@ -342,7 +346,7 @@ class DictionaryManager implements Serializable {
                 }
             });
         } catch (IOException e) {
-            System.err.println(e);
+            log.error(e.getMessage());
         }
     }
 

@@ -136,10 +136,10 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
     public boolean incrementToken() throws IOException {
         assert lastNodeOut <= nextNodeOut;
 
-        if (outputBuffer.isEmpty() == false) {
+        if (!outputBuffer.isEmpty()) {
             // We still have pending outputs from a prior synonym match:
             releaseBufferedToken();
-            assert liveToken == false;
+            assert !liveToken;
             return true;
         }
 
@@ -147,7 +147,7 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
         if (parse()) {
             // A new match was found:
             releaseBufferedToken();
-            assert liveToken == false;
+            assert !liveToken;
             return true;
         }
 
@@ -177,7 +177,7 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
 
             restoreState(token.state);
             lookahead.freeBefore(lookaheadNextRead);
-            assert liveToken == false;
+            assert !liveToken;
         }
 
         lastNodeOut += posIncrAtt.getPositionIncrement();
@@ -253,7 +253,7 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
                 // We used up our lookahead buffer of input tokens
                 // -- pull next real input token:
 
-                assert finished || liveToken == false;
+                assert finished || !liveToken;
 
                 if (finished) {
                     break;
@@ -318,7 +318,7 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
             }
         }
 
-        if (doFinalCapture && liveToken && finished == false) {
+        if (doFinalCapture && liveToken && !finished) {
             // Must capture the final token if we captured any prior tokens:
             capture();
         }
@@ -386,7 +386,7 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
                 }
             }
 
-            assert path.size() > 0;
+            assert !path.isEmpty();
             totalPathNodes += path.size() - 1;
         }
 
