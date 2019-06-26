@@ -27,8 +27,6 @@ import java.util.stream.Stream;
 
 import static java.lang.Character.isDigit;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -48,8 +46,6 @@ import com.worksap.nlp.elasticsearch.plugins.analysis.ChikkarSynonymMap;
  */
 
 class DictionaryManager implements Serializable {
-    private static final Logger log = LogManager.getLogger(DictionaryManager.class);
-
     EntryManager entryMgn;
 
     private static DictionaryManager dictMgn;
@@ -316,9 +312,11 @@ class DictionaryManager implements Serializable {
      * @param restrictMode
      *            if true, then ignore all directed synonyms when parsing dictionary
      *            line
+     * @throws IOException
+     *             Throws {@link IOException} if error occur when reading dictionary
      */
     public synchronized void addDictionary(RelationManager relationMgn, String dictPath, Analyzer analyzer,
-            boolean restrictMode) {
+            boolean restrictMode) throws IOException {
         // set the default relationSet as sparse matrix
         RelationManager.RelationMatrix relationMatrix = relationMgn.getRelationMatrix();
 
@@ -345,8 +343,6 @@ class DictionaryManager implements Serializable {
                     break;
                 }
             });
-        } catch (IOException e) {
-            log.error(e.getMessage());
         }
     }
 
