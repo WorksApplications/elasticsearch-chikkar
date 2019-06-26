@@ -48,12 +48,15 @@ import static org.mockito.Mockito.when;
 
 import com.worksap.nlp.sudachi.Morpheme;
 
-public class TestChikkar {
+public class ChikkarTest {
 
     static Analyzer analyzer;
     static Chikkar chikkar;
     static Chikkar chikkar2;
     static Chikkar chikkar3;
+    static Chikkar chikkarSer;
+
+    static List<String> expectList = new ArrayList<>();
 
     @ClassRule
     public static TemporaryFolder tempFolder = new TemporaryFolder();
@@ -73,7 +76,7 @@ public class TestChikkar {
             { "X", "Z", "W" }, { "Y", "Z", "W" }, { "Z" }, { "W" } };
 
     @BeforeClass
-    public static void setUpBeforeClass() throws IOException {
+    public static void setUpBeforeClass() throws IOException, ClassNotFoundException {
         TokenizerFactory tokenizer = new WhitespaceTokenizerFactory();
         List<CharFilterFactory> charFilters = new ArrayList<>();
         List<TokenFilterFactory> tokenFilters = new ArrayList<>();
@@ -87,16 +90,16 @@ public class TestChikkar {
         String nameDirected = "directed.txt";
 
         tempFolder.create();
-        String tempPath = tempFolder.getRoot().getAbsolutePath();
+        final String tempPath = tempFolder.getRoot().getAbsolutePath();
         Path pathA1 = Paths.get(tempPath, nameA1);
         Path pathA2 = Paths.get(tempPath, nameA2);
         Path pathTest = Paths.get(tempPath, nameTest);
         Path pathDirected = Paths.get(tempPath, nameDirected);
 
-        Files.copy(TestChikkar.class.getResourceAsStream("/" + nameA1), pathA1);
-        Files.copy(TestChikkar.class.getResourceAsStream("/" + nameA2), pathA2);
-        Files.copy(TestChikkar.class.getResourceAsStream("/" + nameTest), pathTest);
-        Files.copy(TestChikkar.class.getResourceAsStream("/" + nameDirected), pathDirected);
+        Files.copy(ChikkarTest.class.getResourceAsStream("/" + nameA1), pathA1);
+        Files.copy(ChikkarTest.class.getResourceAsStream("/" + nameA2), pathA2);
+        Files.copy(ChikkarTest.class.getResourceAsStream("/" + nameTest), pathTest);
+        Files.copy(ChikkarTest.class.getResourceAsStream("/" + nameDirected), pathDirected);
 
         chikkar = new Chikkar(analyzer);
         chikkar.loadDictionary(pathA1.toString());
@@ -108,27 +111,46 @@ public class TestChikkar {
 
         chikkar3 = new Chikkar(analyzer, false);
         chikkar3.loadDictionary(pathDirected.toString());
+
+        Path binPath = Paths.get(tempPath, "chikkarDict.bin");
+        FileOutputStream fileOut = new FileOutputStream(binPath.toFile());
+
+        final FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
+        FSTObjectOutput out = conf.getObjectOutput(fileOut);
+
+        chikkar.dumpToStream(out);
+        out.close();
+        fileOut.close();
+
+        FileInputStream fileIn = new FileInputStream(binPath.toFile());
+        FSTObjectInput in = conf.getObjectInput(fileIn);
+        chikkarSer = new Chikkar(analyzer, in);
+
+        in.close();
+        fileIn.close();
     }
 
     @Test
     public void testGetWithMerge() {
         for (int i = 0; i < 7; i++) {
+            expectList.clear();
             List<String> rtn = chikkar.get(test[i][0], null, null);
             Collections.sort(rtn);
-            List<String> expected = Arrays.asList(test[i]);
-            Collections.sort(expected);
-            assertEquals(expected, rtn);
+            expectList.addAll(Arrays.asList(test[i]));
+            Collections.sort(expectList);
+            assertEquals(expectList, rtn);
         }
     }
 
     @Test
     public void testGetWithDirect() {
         for (int i = 16; i < 20; i++) {
+            expectList.clear();
             List<String> rtn = chikkar.get(test[i][0], null, null, "(Wiki)");
             Collections.sort(rtn);
-            List<String> expected = Arrays.asList(test[i]);
-            Collections.sort(expected);
-            assertEquals(expected, rtn);
+            expectList.addAll(Arrays.asList(test[i]));
+            Collections.sort(expectList);
+            assertEquals(expectList, rtn);
         }
     }
 
@@ -176,11 +198,12 @@ public class TestChikkar {
     @Test
     public void testGetWithMergeTag() {
         for (int i = 7; i < 16; i++) {
+            expectList.clear();
             List<String> rtn = chikkar.get(test[i][0], null, null, "(org)");
             Collections.sort(rtn);
-            List<String> expected = Arrays.asList(test[i]);
-            Collections.sort(expected);
-            assertEquals(expected, rtn);
+            expectList.addAll(Arrays.asList(test[i]));
+            Collections.sort(expectList);
+            assertEquals(expectList, rtn);
         }
     }
 
@@ -192,19 +215,19 @@ public class TestChikkar {
                 Collections.sort(rtn);
 
                 if (j == 0 && i != 0) {
-                    List<String> expected1 = new ArrayList<>();
-                    expected1.addAll(Arrays.asList(groups[1]));
-                    expected1.add("あらすじ");
-                    expected1.add("荒筋");
-                    Collections.sort(expected1);
-                    assertEquals(expected1, rtn);
+                    expectList.clear();
+                    expectList.addAll(Arrays.asList(groups[1]));
+                    expectList.add("あらすじ");
+                    expectList.add("荒筋");
+                    Collections.sort(expectList);
+                    assertEquals(expectList, rtn);
                     continue;
                 }
 
-                List<String> expected = new ArrayList<>();
-                expected.addAll(Arrays.asList(groups[i]));
-                Collections.sort(expected);
-                assertEquals(expected, rtn);
+                expectList.clear();
+                expectList.addAll(Arrays.asList(groups[i]));
+                Collections.sort(expectList);
+                assertEquals(expectList, rtn);
             }
         }
     }
@@ -223,9 +246,10 @@ public class TestChikkar {
         List<String> rtn = chikkar.find(morphemeList, 0, 2);
         Collections.sort(rtn);
 
-        List<String> expected = Arrays.asList(groups[2]);
-        Collections.sort(expected);
-        assertEquals(expected, rtn);
+        expectList.clear();
+        expectList.addAll(Arrays.asList(groups[2]));
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
     }
 
     @Test
@@ -233,9 +257,10 @@ public class TestChikkar {
         List<String> rtn = chikkar.find("概略のあいまい", 3, 7);
         Collections.sort(rtn);
 
-        List<String> expected = Arrays.asList(groups[0]);
-        Collections.sort(expected);
-        assertEquals(expected, rtn);
+        expectList.clear();
+        expectList.addAll(Arrays.asList(groups[0]));
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
     }
 
     @Test
@@ -243,53 +268,39 @@ public class TestChikkar {
         List<String> rtn = chikkar.find("概略のあいまい");
         Collections.sort(rtn);
 
-        List<String> expected = Arrays.asList(groups[1]);
-        Collections.sort(expected);
-        assertEquals(expected, rtn);
+        expectList.clear();
+        expectList.addAll(Arrays.asList(groups[1]));
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
     }
 
     @Test
-    public void testChikkarSerialization() throws IOException, ClassNotFoundException {
-        String tempPath = tempFolder.getRoot().getAbsolutePath();
-        Path binPath = Paths.get(tempPath, "chikkarDict.bin");
-        FileOutputStream fileOut = new FileOutputStream(binPath.toFile());
-
-        final FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
-        FSTObjectOutput out = conf.getObjectOutput(fileOut);
-
-        chikkar.dumpToStream(out);
-        out.close();
-        fileOut.close();
-
-        FileInputStream fileIn = new FileInputStream(binPath.toFile());
-        FSTObjectInput in = conf.getObjectInput(fileIn);
-        Chikkar chikkarSer = new Chikkar(analyzer, in);
-
-        in.close();
-        fileIn.close();
-
+    public void testChikkarSerialization() {
         for (int i = 0; i < 7; i++) {
             List<String> rtn = chikkarSer.get(test[i][0], null, null);
             Collections.sort(rtn);
-            List<String> expected = Arrays.asList(test[i]);
-            Collections.sort(expected);
-            assertEquals(expected, rtn);
+            expectList.clear();
+            expectList.addAll(Arrays.asList(test[i]));
+            Collections.sort(expectList);
+            assertEquals(expectList, rtn);
         }
 
         for (int i = 7; i < 16; i++) {
             List<String> rtn = chikkarSer.get(test[i][0], null, null, "(org)");
             Collections.sort(rtn);
-            List<String> expected = Arrays.asList(test[i]);
-            Collections.sort(expected);
-            assertEquals(expected, rtn);
+            expectList.clear();
+            expectList.addAll(Arrays.asList(test[i]));
+            Collections.sort(expectList);
+            assertEquals(expectList, rtn);
         }
 
         for (int i = 16; i < 20; i++) {
             List<String> rtn = chikkarSer.get(test[i][0], null, null, "(Wiki)");
             Collections.sort(rtn);
-            List<String> expected = Arrays.asList(test[i]);
-            Collections.sort(expected);
-            assertEquals(expected, rtn);
+            expectList.clear();
+            expectList.addAll(Arrays.asList(test[i]));
+            Collections.sort(expectList);
+            assertEquals(expectList, rtn);
         }
 
         for (int i = 0; i < groups.length; ++i) {
@@ -298,19 +309,19 @@ public class TestChikkar {
                 Collections.sort(rtn);
 
                 if (j == 0 && i != 0) {
-                    List<String> expected1 = new ArrayList<>();
-                    expected1.addAll(Arrays.asList(groups[1]));
-                    expected1.add("あらすじ");
-                    expected1.add("荒筋");
-                    Collections.sort(expected1);
-                    assertEquals(expected1, rtn);
+                    expectList.clear();
+                    expectList.addAll(Arrays.asList(groups[1]));
+                    expectList.add("あらすじ");
+                    expectList.add("荒筋");
+                    Collections.sort(expectList);
+                    assertEquals(expectList, rtn);
                     continue;
                 }
 
-                List<String> expected = new ArrayList<>();
-                expected.addAll(Arrays.asList(groups[i]));
-                Collections.sort(expected);
-                assertEquals(expected, rtn);
+                expectList.clear();
+                expectList.addAll(Arrays.asList(groups[i]));
+                Collections.sort(expectList);
+                assertEquals(expectList, rtn);
             }
         }
 
@@ -326,23 +337,26 @@ public class TestChikkar {
         List<String> rtn = chikkarSer.find(morphemeList, 0, 2);
         Collections.sort(rtn);
 
-        List<String> expected = Arrays.asList(groups[2]);
-        Collections.sort(expected);
-        assertEquals(expected, rtn);
+        expectList.clear();
+        expectList.addAll(Arrays.asList(groups[2]));
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
 
         rtn = chikkarSer.find("概略のあいまい", 3, 7);
         Collections.sort(rtn);
 
-        expected = Arrays.asList(groups[0]);
-        Collections.sort(expected);
-        assertEquals(expected, rtn);
+        expectList.clear();
+        expectList.addAll(Arrays.asList(groups[0]));
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
 
         rtn = chikkarSer.find("概略のあいまい");
         Collections.sort(rtn);
 
-        expected = Arrays.asList(groups[1]);
-        Collections.sort(expected);
-        assertEquals(expected, rtn);
+        expectList.clear();
+        expectList.addAll(Arrays.asList(groups[1]));
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
     }
 
     static class WhitespaceTokenizerFactory implements TokenizerFactory {
