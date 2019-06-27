@@ -243,9 +243,9 @@ class DictionaryManager implements Serializable {
                             if (entryMgn.retrieveEntry(res, null, null, semanticTag).isEmpty()) {
                                 entryMgn.insertEntry(res, new Entry(null, null, semanticTag));
                             }
-                            if (left == true && i == 0) {
+                            if (left && i == 0) {
                                 basewords.add(entryMgn.retrieveEntry(res, null, null, semanticTag).get(0));
-                            } else if (left == false && i == directions.length - 1) {
+                            } else if (!left && i == directions.length - 1) {
                                 basewords.add(entryMgn.retrieveEntry(res, null, null, semanticTag).get(0));
                             } else {
                                 relatives.add(entryMgn.retrieveEntry(res, null, null, semanticTag).get(0));
@@ -312,9 +312,11 @@ class DictionaryManager implements Serializable {
      * @param restrictMode
      *            if true, then ignore all directed synonyms when parsing dictionary
      *            line
+     * @throws IOException
+     *             Throws {@link IOException} if error occur when reading dictionary
      */
     public synchronized void addDictionary(RelationManager relationMgn, String dictPath, Analyzer analyzer,
-            boolean restrictMode) {
+            boolean restrictMode) throws IOException {
         // set the default relationSet as sparse matrix
         RelationManager.RelationMatrix relationMatrix = relationMgn.getRelationMatrix();
 
@@ -341,8 +343,6 @@ class DictionaryManager implements Serializable {
                     break;
                 }
             });
-        } catch (IOException e) {
-            System.err.println(e);
         }
     }
 

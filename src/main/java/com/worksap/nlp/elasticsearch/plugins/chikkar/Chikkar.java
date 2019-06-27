@@ -90,8 +90,10 @@ public class Chikkar {
      * @param restrictMode
      *            if true, then ignore all directed synonyms when parsing dictionary
      *            line
+     * @throws IOException
+     *             Throws {@link IOException} if error occur when reading dictionary
      */
-    public Chikkar(Analyzer analyzer, Path configPath, List<String> dictList, boolean restrictMode) {
+    public Chikkar(Analyzer analyzer, Path configPath, List<String> dictList, boolean restrictMode) throws IOException {
         this.dictMgn = DictionaryManager.getInstance();
         this.relationMgn = new RelationManager();
         this.analyzer = analyzer;
@@ -146,8 +148,10 @@ public class Chikkar {
      *
      * @param path
      *            a dictionary to be loaded.
+     * @throws IOException
+     *             Throws {@link IOException} if error occur when reading dictionary
      */
-    public void loadDictionary(String path) {
+    public void loadDictionary(String path) throws IOException {
         dictMgn.addDictionary(relationMgn, path, analyzer, restrictMode);
     }
 
@@ -245,7 +249,7 @@ public class Chikkar {
      */
     public List<String> find(List<Morpheme> input, int start, int end) {
         List<String> rtn = new ArrayList<>();
-        Optional<String> longest = input.subList(start, end).stream().map(word -> word.surface())
+        Optional<String> longest = input.subList(start, end).stream().map(Morpheme::surface)
                 .max(Comparator.comparing(String::length));
         if (longest.isPresent()) {
             rtn.addAll(get(longest.get(), null, null));

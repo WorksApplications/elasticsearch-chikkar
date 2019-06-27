@@ -25,7 +25,7 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-public class TestEntryManager {
+public class EntryManagerTest {
     static final int LIST_SIZE = 2;
     static String posList[] = { "1", "2" };
     static String pronunList[] = { "p", "r" };

@@ -33,8 +33,8 @@ public class RelationManager implements Serializable {
     }
 
     class RelationMatrix implements Serializable {
-        List<LinkedList<Integer>> matrix = new ArrayList<>();
-        List<String> semanticTags = new ArrayList<>();
+        private List<LinkedList<Integer>> matrix = new ArrayList<>();
+        private List<String> semanticTags = new ArrayList<>();
 
         void add(int a, int b, String semanticTag) {
             while (matrix.size() < a + 1) {
