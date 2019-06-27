@@ -82,7 +82,7 @@ public class ChikkarTest {
         List<TokenFilterFactory> tokenFilters = new ArrayList<>();
 
         analyzer = new CustomAnalyzer("synonyms", tokenizer, charFilters.toArray(new CharFilterFactory[0]),
-                tokenFilters.stream().map(TokenFilterFactory::getSynonymFilter).toArray(TokenFilterFactory[]::new));
+                tokenFilters.toArray(new TokenFilterFactory[0]));
 
         String nameA1 = "synonymMergeA1.txt";
         String nameA2 = "synonymMergeA2.txt";
