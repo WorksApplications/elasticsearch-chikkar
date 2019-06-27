@@ -113,21 +113,17 @@ public class ChikkarTest {
         chikkar3.loadDictionary(pathDirected.toString());
 
         Path binPath = Paths.get(tempPath, "chikkarDict.bin");
-        FileOutputStream fileOut = new FileOutputStream(binPath.toFile());
-
         final FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
-        FSTObjectOutput out = conf.getObjectOutput(fileOut);
 
-        chikkar.dumpToStream(out);
-        out.close();
-        fileOut.close();
+        try (FileOutputStream fileOut = new FileOutputStream(binPath.toFile());
+                FSTObjectOutput out = conf.getObjectOutput(fileOut)) {
+            chikkar.dumpToStream(out);
+        }
 
-        FileInputStream fileIn = new FileInputStream(binPath.toFile());
-        FSTObjectInput in = conf.getObjectInput(fileIn);
-        chikkarSer = new Chikkar(analyzer, in);
-
-        in.close();
-        fileIn.close();
+        try (FileInputStream fileIn = new FileInputStream(binPath.toFile());
+                FSTObjectInput in = conf.getObjectInput(fileIn)) {
+            chikkarSer = new Chikkar(analyzer, in);
+        }
     }
 
     @Test
