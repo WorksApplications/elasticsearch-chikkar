@@ -63,7 +63,7 @@ public class ChikkarSynonymTokenFilterTest {
         List<TokenFilterFactory> tokenFilters = new ArrayList<>();
 
         analyzer = new CustomAnalyzer("synonyms", tokenizer, charFilters.toArray(new CharFilterFactory[0]),
-                tokenFilters.stream().map(TokenFilterFactory::getSynonymFilter).toArray(TokenFilterFactory[]::new));
+                tokenFilters.toArray(new TokenFilterFactory[0]));
 
         tempFolder.create();
         Path configPath = Paths.get(tempFolder.getRoot().getAbsolutePath());

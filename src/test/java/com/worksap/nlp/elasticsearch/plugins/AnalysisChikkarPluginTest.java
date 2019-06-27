@@ -17,13 +17,16 @@
 package com.worksap.nlp.elasticsearch.plugins;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
@@ -34,14 +37,17 @@ import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionLengthAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
+import org.elasticsearch.Version;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.index.analysis.AnalysisRegistry;
 import org.elasticsearch.index.analysis.CharFilterFactory;
 import org.elasticsearch.index.analysis.CustomAnalyzer;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
 import org.elasticsearch.index.analysis.TokenizerFactory;
+import org.elasticsearch.indices.analysis.AnalysisModule;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -52,6 +58,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import static com.worksap.nlp.elasticsearch.plugins.AnalysisChikkarPlugin.CHIKKAR_PLUGIN_NAME;
 import com.worksap.nlp.elasticsearch.plugins.analysis.ChikkarSynonymTokenFilterFactory;
 
 public class AnalysisChikkarPluginTest {
@@ -66,13 +73,13 @@ public class AnalysisChikkarPluginTest {
     public TemporaryFolder tempFolder = new TemporaryFolder();
 
     @Before
-    public void setUp() throws IOException {
+    public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException {
         TokenizerFactory tokenizer = new WhitespaceTokenizerFactory();
         List<CharFilterFactory> charFilters = new ArrayList<>();
         List<TokenFilterFactory> tokenFilters = new ArrayList<>();
 
         analyzer = new CustomAnalyzer("synonyms", tokenizer, charFilters.toArray(new CharFilterFactory[0]),
-                tokenFilters.stream().map(TokenFilterFactory::getSynonymFilter).toArray(TokenFilterFactory[]::new));
+                tokenFilters.toArray(new TokenFilterFactory[0]));
 
         String[] dicts = { "synonymMergeA1.txt", "synonymMergeA2.txt", "synonymB.txt", "synonymC.txt",
                 "synonymMultiToken.txt" };
@@ -85,37 +92,61 @@ public class AnalysisChikkarPluginTest {
         }
 
         tokenFilterA = createUserTokenFilterFactory(configPath,
-                Arrays.asList("synonymMergeA1.txt", "synonymMergeA2.txt"), tokenizer, charFilters, tokenFilters);
-        tokenFilterB = createUserTokenFilterFactory(configPath, Arrays.asList("synonymB.txt"), tokenizer, charFilters,
-                tokenFilters);
-        tokenFilterC = createUserTokenFilterFactory(configPath, Arrays.asList("synonymC.txt"), tokenizer, charFilters,
-                tokenFilters);
-        tokenFilterD = createUserTokenFilterFactory(configPath, Arrays.asList("synonymMultiToken.txt"), tokenizer,
-                charFilters, tokenFilters);
+                Arrays.asList("synonymMergeA1.txt", "synonymMergeA2.txt"), tokenizer);
+        tokenFilterB = createUserTokenFilterFactory(configPath, Arrays.asList("synonymB.txt"), tokenizer);
+        tokenFilterC = createUserTokenFilterFactory(configPath, Arrays.asList("synonymC.txt"), tokenizer);
+        tokenFilterD = createUserTokenFilterFactory(configPath, Arrays.asList("synonymMultiToken.txt"), tokenizer);
     }
 
-    TokenFilterFactory createUserTokenFilterFactory(Path configPath, List<String> dictList, TokenizerFactory tokenizer,
-            List<CharFilterFactory> charFilters, List<TokenFilterFactory> tokenFilters) throws IOException {
+    TokenFilterFactory createUserTokenFilterFactory(Path configPath, List<String> dictList, TokenizerFactory tokenizer)
+            throws IOException, NoSuchFieldException, IllegalAccessException {
+
         Index index = mock(Index.class);
         when(index.getName()).thenReturn("test");
 
         IndexSettings indexSettings = mock(IndexSettings.class);
         when(indexSettings.getIndex()).thenReturn(index);
+        when(indexSettings.getIndexVersionCreated()).thenReturn(Version.fromId(5061599));
 
         Environment env = mock(Environment.class);
         when(env.configFile()).thenReturn(configPath);
 
-        Settings settings = Settings.builder().put("version", "8.0.0").putList("dict_list", dictList).build();
+        final String tokenizerName = "dummy_tokenizer";
+        Settings settings = Settings.builder().put("version", "8.0.0").putList("dict_list", dictList)
+                .put("tokenizer", tokenizerName).build();
 
         when(indexSettings.getSettings()).thenReturn(settings);
 
+        final Map<String, AnalysisModule.AnalysisProvider<TokenizerFactory>> tokenizers = new HashMap<>();
+        tokenizers.put(tokenizerName, new AnalysisModule.AnalysisProvider<TokenizerFactory>() {
+            @Override
+            public TokenizerFactory get(final IndexSettings indexSettings, final Environment environment,
+                    final String name, final Settings settings) {
+                return tokenizer;
+            }
+
+            @Override
+            public boolean requiresAnalysisSettings() {
+                return true;
+            }
+        });
+
+        AnalysisRegistry analysisRegistry = new AnalysisRegistry(env, new HashMap<>(), new HashMap<>(), tokenizers,
+                new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>());
+        AnalysisChikkarPlugin.PluginComponent pluginComponent = new AnalysisChikkarPlugin.PluginComponent();
+        pluginComponent.setAnalysisRegistry(analysisRegistry);
+
         AnalysisChikkarPlugin plugin = new AnalysisChikkarPlugin();
-        TokenFilterFactory factory = plugin.getTokenFilters().get(AnalysisChikkarPlugin.CHIKKAR_PLUGIN_NAME)
-                .get(indexSettings, env, "plugins", settings);
+        Field pluginComponentField = plugin.getClass().getDeclaredField("pluginComponent");
+        pluginComponentField.setAccessible(true);
+        pluginComponentField.set(plugin, pluginComponent);
+
+        TokenFilterFactory factory = plugin.getTokenFilters().get(CHIKKAR_PLUGIN_NAME).get(indexSettings, env,
+                "plugins", settings);
 
         assertTrue(factory instanceof ChikkarSynonymTokenFilterFactory);
 
-        return factory.getChainAwareTokenFilterFactory(tokenizer, charFilters, tokenFilters, null);
+        return factory;
     }
 
     class WhitespaceTokenizerFactory implements TokenizerFactory {
