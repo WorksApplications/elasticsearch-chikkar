@@ -134,12 +134,9 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
 
     @Override
     public boolean incrementToken() throws IOException {
-        // assert lastNodeOut <= nextNodeOut;
-
         if (!outputBuffer.isEmpty()) {
             // We still have pending outputs from a prior synonym match:
             releaseBufferedToken();
-            // assert !liveToken;
             return true;
         }
 
@@ -147,7 +144,6 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
         if (parse()) {
             // A new match was found:
             releaseBufferedToken();
-            // assert !liveToken;
             return true;
         }
 
@@ -159,7 +155,6 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
                 return false;
             }
 
-            // assert liveToken;
             liveToken = false;
 
             // NOTE: no need to change posInc since it's relative, i.e. whatever
@@ -170,15 +165,11 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
         } else {
             // We still have buffered lookahead tokens from a previous
             // parse attempt that required lookahead; just replay them now:
-            // assert lookaheadNextRead < lookaheadNextWrite : "read=" + lookaheadNextRead +
-            // " write="
-            // + lookaheadNextWrite;
             BufferedInputToken token = lookahead.get(lookaheadNextRead);
             lookaheadNextRead++;
 
             restoreState(token.state);
             lookahead.freeBefore(lookaheadNextRead);
-            // assert !liveToken;
         }
 
         lastNodeOut += posIncrAtt.getPositionIncrement();
@@ -198,8 +189,6 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
             termAtt.append(token.term);
 
             // We better have a match already:
-            // assert matchStartOffset != -1;
-
             offsetAtt.setOffset(matchStartOffset, matchEndOffset);
             typeAtt.setType(TYPE_SYNONYM);
         }
@@ -224,8 +213,6 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
 
         BytesRef pendingOutput = fst.outputs.getNoOutput();
         fst.getFirstArc(scratchArc);
-
-        // assert scratchArc.output == fst.outputs.getNoOutput();
 
         // How many tokens in the current match
         int matchLength = 0;
@@ -253,8 +240,6 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
             } else {
                 // We used up our lookahead buffer of input tokens
                 // -- pull next real input token:
-
-                // assert finished || !liveToken;
 
                 if (finished) {
                     break;
@@ -290,8 +275,6 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
                 pendingOutput = fst.outputs.add(pendingOutput, scratchArc.output);
                 bufUpto += Character.charCount(codePoint);
             }
-
-            // assert bufUpto == bufferLen;
 
             // OK, entire token matched; now see if this is a final
             // state in the FST (a match):
@@ -360,7 +343,6 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
         // node ID for the final end node where all paths merge back:
         int totalPathNodes;
         if (keepOrig) {
-            // assert matchInputLength > 0;
             totalPathNodes = matchInputLength - 1;
         } else {
             totalPathNodes = 0;
@@ -386,8 +368,6 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
                     lastStart = 1 + chUpto;
                 }
             }
-
-            // assert !path.isEmpty();
             totalPathNodes += path.size() - 1;
         }
 
@@ -463,7 +443,6 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
      * Buffers the current input token into lookahead buffer.
      */
     private void capture() {
-        // assert liveToken;
         liveToken = false;
         BufferedInputToken token = lookahead.get(lookaheadNextWrite);
         lookaheadNextWrite++;
@@ -471,7 +450,6 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
         token.state = captureState();
         token.startOffset = offsetAtt.startOffset();
         token.endOffset = offsetAtt.endOffset();
-        // assert token.term.length() == 0;
         token.term.append(termAtt);
     }
 
