@@ -17,6 +17,7 @@
 package com.worksap.nlp.elasticsearch.plugins.chikkar;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -24,8 +25,6 @@ import java.util.List;
 import java.util.Optional;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.nustaq.serialization.FSTObjectInput;
-import org.nustaq.serialization.FSTObjectOutput;
 
 import com.worksap.nlp.sudachi.Morpheme;
 
@@ -45,7 +44,14 @@ public class Chikkar {
     RelationManager relationMgn;
 
     private final Analyzer analyzer;
-    private final boolean restrictMode;
+    private int dictId = 0;
+
+    public static Chikkar clone(Chikkar obj) {
+        Chikkar newObj = new Chikkar(obj.analyzer);
+        newObj.dictId = obj.dictId;
+        newObj.relationMgn = RelationManager.clone(obj.relationMgn);
+        return newObj;
+    }
 
     /**
      * Constructor with argument
@@ -57,89 +63,6 @@ public class Chikkar {
         this.dictMgn = DictionaryManager.getInstance();
         this.relationMgn = new RelationManager();
         this.analyzer = analyzer;
-        this.restrictMode = false;
-    }
-
-    /**
-     * Constructor with argument
-     *
-     * @param analyzer
-     *            An {@link Analyzer} instance which is used to tokenize input text
-     * @param restrictMode
-     *            if true, then ignore all directed synonyms when parsing dictionary
-     *            line
-     */
-    public Chikkar(Analyzer analyzer, boolean restrictMode) {
-        this.dictMgn = DictionaryManager.getInstance();
-        this.relationMgn = new RelationManager();
-        this.analyzer = analyzer;
-        this.restrictMode = restrictMode;
-    }
-
-    /**
-     * Constructor with argument of all dictionary paths.
-     *
-     * @param analyzer
-     *            An {@link Analyzer} instance which is used to tokenize input text
-     * @param configPath
-     *            path to the elastic-search config folder. As chikkar is run in
-     *            elastic-search plugin, only the files under this config folder can
-     *            be accessed.
-     * @param dictList
-     *            list of relative dict path under config folder
-     * @param restrictMode
-     *            if true, then ignore all directed synonyms when parsing dictionary
-     *            line
-     * @throws IOException
-     *             Throws {@link IOException} if error occur when reading dictionary
-     */
-    public Chikkar(Analyzer analyzer, Path configPath, List<String> dictList, boolean restrictMode) throws IOException {
-        this.dictMgn = DictionaryManager.getInstance();
-        this.relationMgn = new RelationManager();
-        this.analyzer = analyzer;
-        this.restrictMode = restrictMode;
-
-        for (String dictPath : dictList) {
-            dictMgn.addDictionary(relationMgn, configPath.resolve(dictPath).toString(), analyzer, restrictMode);
-        }
-    }
-
-    /**
-     * Constructor with argument of binary dictionary streams.
-     *
-     * @param analyzer
-     *            An {@link Analyzer} instance which is used to tokenize input text
-     * @param in
-     *            A {@link FSTObjectInput} instance which contain binary dictionary
-     *            streams
-     * @throws IOException
-     *             Throws {@link IOException} if binary dictionary streams have
-     *             error
-     * @throws ClassNotFoundException
-     *             Throws {@link ClassNotFoundException} if read object can't be
-     *             cast to specific class
-     */
-    public Chikkar(Analyzer analyzer, FSTObjectInput in) throws IOException, ClassNotFoundException {
-        this.analyzer = analyzer;
-        this.dictMgn = (DictionaryManager) in.readObject();
-        this.relationMgn = (RelationManager) in.readObject();
-        this.restrictMode = in.readBoolean();
-    }
-
-    /**
-     * Save dictionary to streams
-     *
-     * @param out
-     *            A {@link FSTObjectOutput} instance which stands for output streams
-     *
-     * @throws IOException
-     *             Throws {@link IOException} if writing dictionary to streams have
-     *             error
-     */
-    public void dumpToStream(FSTObjectOutput out) throws IOException {
-        out.writeObject(dictMgn);
-        out.writeObject(relationMgn);
-        out.writeBoolean(restrictMode);
     }
 
     /**
@@ -151,8 +74,10 @@ public class Chikkar {
      * @throws IOException
      *             Throws {@link IOException} if error occur when reading dictionary
      */
-    public void loadDictionary(String path) throws IOException {
-        dictMgn.addDictionary(relationMgn, path, analyzer, restrictMode);
+    public void loadDictionary(Path path) throws IOException {
+        if (Files.exists(path)) {
+            dictMgn.addDictionary(relationMgn, path, analyzer, ++dictId);
+        }
     }
 
     /**
@@ -161,47 +86,11 @@ public class Chikkar {
      *
      * @param query
      *            the head word.
-     * @param pos
-     *            partOfSpeech, value can be null.
-     * @param pronun
-     *            pronunciation, value can be null.
-     * @param semanticTag
-     *            semantic tag, value can be null.
-     * @return {@code List<String>} List of phrases that are synonymous of the given
-     *         one.
-     */
-    public List<String> get(String query, String pos, String pronun, String semanticTag) {
-        return dictMgn.findRelation(relationMgn, query, pos, pronun, semanticTag);
-    }
-
-    /**
-     * Find synonymous result using active dictionaries specified by this Chikkar
-     * instance.
-     *
-     * @param query
-     *            the head word.
-     * @param pos
-     *            partOfSpeech, value can be null.
-     * @param pronun
-     *            pronunciation, value can be null.
-     * @return {@code List<String>} List of phrases that are synonymous of the given
-     *         one.
-     */
-    public List<String> get(String query, String pos, String pronun) {
-        return dictMgn.findRelation(relationMgn, query, pos, pronun, dictMgn.getDefaultSemanticTag(query, pos, pronun));
-    }
-
-    /**
-     * Find synonymous result using active dictionaries specified by this Chikkar
-     * instance.
-     *
-     * @param query
-     *            The word used as query.
      * @return {@code List<String>} List of phrases that are synonymous of the given
      *         one.
      */
     public List<String> get(String query) {
-        return get(query, null, null);
+        return dictMgn.findRelation(relationMgn, query);
     }
 
     /**
@@ -223,7 +112,7 @@ public class Chikkar {
         // return the related Entry with the longest word if found
         List<String> rtn = new ArrayList<>();
         if (longest.length() > 0) {
-            rtn.addAll(get(longest, null, null));
+            rtn.addAll(get(longest));
         }
         return rtn;
     }
@@ -252,7 +141,7 @@ public class Chikkar {
         Optional<String> longest = input.subList(start, end).stream().map(Morpheme::surface)
                 .max(Comparator.comparing(String::length));
         if (longest.isPresent()) {
-            rtn.addAll(get(longest.get(), null, null));
+            rtn.addAll(get(longest.get()));
         }
         return rtn;
     }
@@ -282,43 +171,9 @@ public class Chikkar {
      *
      * @param query
      *            the head word.
-     * @param pos
-     *            partOfSpeech, value can be null.
-     * @param pronun
-     *            pronunciation, value can be null.
-     * @param semanticTag
-     *            semantic tag, value can be null.
      * @return A {@code List<Integer>}.
      */
-    public List<Integer> getSynonymId(String query, String pos, String pronun, String semanticTag) {
-        return dictMgn.findSynonymId(relationMgn, query, pos, pronun, semanticTag);
-    }
-
-    /**
-     * Get all synonym id of given query word. A {@code List<Integer>} is returned.
-     *
-     * @param query
-     *            the head word.
-     * @param pos
-     *            partOfSpeech, value can be null.
-     * @param pronun
-     *            pronunciation, value can be null.
-     * @return A {@code List<Integer>}
-     */
-    public List<Integer> getSynonymId(String query, String pos, String pronun) {
-        return dictMgn.findSynonymId(relationMgn, query, pos, pronun,
-                dictMgn.getDefaultSemanticTag(query, pos, pronun));
-    }
-
-    /**
-     * Get all synonym id of given query word. A {@code List<Integer>} is returned.
-     *
-     * @param query
-     *            the head word.
-     * @return A {@code List<Integer>}
-     */
     public List<Integer> getSynonymId(String query) {
-        return getSynonymId(query, null, null);
+        return dictMgn.findSynonymId(relationMgn, query);
     }
-
 }

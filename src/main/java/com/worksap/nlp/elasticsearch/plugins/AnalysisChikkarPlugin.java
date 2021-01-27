@@ -19,21 +19,23 @@ package com.worksap.nlp.elasticsearch.plugins;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.worksap.nlp.elasticsearch.plugins.analysis.ChikkarSynonymTokenFilterFactory;
+import com.worksap.nlp.elasticsearch.plugins.analysis.ChikkarSynonymGraphTokenFilterFactory;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
 import org.elasticsearch.indices.analysis.AnalysisModule;
 import org.elasticsearch.plugins.AnalysisPlugin;
 import org.elasticsearch.plugins.Plugin;
 
-import com.worksap.nlp.elasticsearch.plugins.analysis.ChikkarSynonymTokenFilterFactory;
-
 public class AnalysisChikkarPlugin extends Plugin implements AnalysisPlugin {
 
-    public static final String CHIKKAR_PLUGIN_NAME = "chikkar_synonym";
+    public static final String SYNONYM_FILTER_NAME = "chikkar_synonym";
+    public static final String SYNONYM_GRAPH_FILTER_NAME = "chikkar_synonym_graph";
 
     @Override
     public Map<String, AnalysisModule.AnalysisProvider<TokenFilterFactory>> getTokenFilters() {
         Map<String, AnalysisModule.AnalysisProvider<TokenFilterFactory>> tokenFilters = new HashMap<>();
-        tokenFilters.put(CHIKKAR_PLUGIN_NAME, ChikkarSynonymTokenFilterFactory::new);
+        tokenFilters.put(SYNONYM_FILTER_NAME, ChikkarSynonymTokenFilterFactory::new);
+        tokenFilters.put(SYNONYM_GRAPH_FILTER_NAME, ChikkarSynonymGraphTokenFilterFactory::new);
         return tokenFilters;
     }
 }

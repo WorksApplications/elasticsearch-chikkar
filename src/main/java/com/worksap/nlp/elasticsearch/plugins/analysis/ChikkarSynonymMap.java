@@ -16,122 +16,32 @@
 
 package com.worksap.nlp.elasticsearch.plugins.analysis;
 
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayInputStream;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import com.google.common.io.ByteStreams;
-import com.google.common.io.CountingOutputStream;
-import org.apache.lucene.analysis.Analyzer;
+import com.worksap.nlp.elasticsearch.plugins.chikkar.Chikkar;
 import org.apache.lucene.store.ByteArrayDataOutput;
-import org.apache.lucene.store.DataInput;
-import org.apache.lucene.store.InputStreamDataInput;
-import org.apache.lucene.store.OutputStreamDataOutput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.fst.ByteSequenceOutputs;
 import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.Util;
-import org.nustaq.serialization.FSTConfiguration;
-import org.nustaq.serialization.FSTObjectInput;
-import org.nustaq.serialization.FSTObjectOutput;
-
-import com.worksap.nlp.elasticsearch.plugins.chikkar.Chikkar;
 
 public class ChikkarSynonymMap {
     // for multiword support, you must separate words with this separator
-    private static final int LONG_BYTES = 8;
-    public static final char WORD_SEPARATOR = '\1';
+    public static final char WORD_SEPARATOR = '\0';
     public final Chikkar chikkar;
     public final FST<BytesRef> fst;
+    /** maxHorizontalContext: maximum context we need on the tokenstream */
+    public final int maxHorizontalContext;
 
-    /**
-     * Constructor with argument
-     *
-     * @param chikkar
-     *            A {@link Chikkar} instance used for building FST
-     * @param fst
-     *            A {@link org.apache.lucene.util.fst.FST} instance for synonym
-     *            matching
-     */
-    public ChikkarSynonymMap(Chikkar chikkar, FST<BytesRef> fst) {
+    public ChikkarSynonymMap(Chikkar chikkar, FST<BytesRef> fst, int maxHorizontalContext) {
         this.chikkar = chikkar;
         this.fst = fst;
-    }
-
-    /**
-     * Save built chikkar instance to binary files
-     *
-     * @param chikkarPath
-     *            local file path of the dumped chikkar instance
-     * @throws IOException
-     *             Throws {@link IOException} if error happens during saving files
-     */
-    public void dump(Path chikkarPath) throws IOException {
-        try (CountingOutputStream countOut = new CountingOutputStream(
-                new BufferedOutputStream(new FileOutputStream(chikkarPath.toFile())))) {
-
-            final FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
-
-            try (FSTObjectOutput out = conf.getObjectOutput(countOut)) {
-                chikkar.dumpToStream(out);
-                out.flush();
-
-                long byteCount = countOut.getCount();
-                out.writeLong(byteCount);
-                out.flush();
-
-                int realBytes = (int) (countOut.getCount() - byteCount);
-                if (realBytes < LONG_BYTES) {
-                    out.write(new byte[LONG_BYTES - realBytes]);
-                    out.flush();
-                }
-
-                fst.save(new OutputStreamDataOutput(countOut));
-            }
-        }
-    }
-
-    /**
-     * Restore {@link ChikkarSynonymMap} instance from binary files
-     *
-     * @param chikkarPath
-     *            local file path of the dumped chikkar instance
-     * @param analyzer
-     *            An {@link Analyzer} instance which is used to tokenize input text
-     * @return A {@link ChikkarSynonymMap} instance restored from binary files
-     *
-     * @throws IOException
-     *             Throws {@link IOException} if error happens during reading files
-     * @throws ClassNotFoundException
-     *             Throws {@link ClassNotFoundException} if read object can't be
-     *             cast to specific class
-     */
-    public static ChikkarSynonymMap read(Path chikkarPath, Analyzer analyzer)
-            throws IOException, ClassNotFoundException {
-
-        byte[] bytes = ByteStreams.toByteArray(new FileInputStream(chikkarPath.toFile()));
-
-        final FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
-
-        try (FSTObjectInput in = conf.getObjectInput(new ByteArrayInputStream(bytes))) {
-            Chikkar chikkar = new Chikkar(analyzer, in);
-
-            long readBytes = in.readLong();
-            int offSet = (int) (readBytes + LONG_BYTES);
-
-            DataInput dataIn = new InputStreamDataInput(new ByteArrayInputStream(bytes, offSet, bytes.length - offSet));
-            FST<BytesRef> fst = new FST<>(dataIn, ByteSequenceOutputs.getSingleton());
-
-            return new ChikkarSynonymMap(chikkar, fst);
-        }
+        this.maxHorizontalContext = maxHorizontalContext;
     }
 
     public static class Builder {
@@ -185,8 +95,12 @@ public class ChikkarSynonymMap {
             List<String> keys = chikkar.getSortedKeys();
 
             final IntsRefBuilder scratchIntsRef = new IntsRefBuilder();
+            final String spliter = String.valueOf(WORD_SEPARATOR);
+            int maxHorizontalContext = 0;
 
             for (String input : keys) {
+                maxHorizontalContext = Math.max(maxHorizontalContext, input.split(spliter).length);
+
                 List<Integer> ords = chikkar.getSynonymId(input);
                 if (ords.isEmpty()) {
                     continue;
@@ -233,7 +147,7 @@ public class ChikkarSynonymMap {
             }
 
             FST<BytesRef> fst = builder.finish();
-            return new ChikkarSynonymMap(chikkar, fst);
+            return new ChikkarSynonymMap(chikkar, fst, maxHorizontalContext);
         }
     }
 

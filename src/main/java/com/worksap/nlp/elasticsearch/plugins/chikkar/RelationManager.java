@@ -17,12 +17,16 @@
 package com.worksap.nlp.elasticsearch.plugins.chikkar;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 
 public class RelationManager implements Serializable {
     RelationMatrix relationMatrix;
+
+    public static RelationManager clone(RelationManager obj) {
+        RelationManager newObj = new RelationManager();
+        newObj.relationMatrix = obj.relationMatrix.createCopy();
+        return newObj;
+    }
 
     public RelationManager() {
         this.relationMatrix = new RelationMatrix();
@@ -34,15 +38,32 @@ public class RelationManager implements Serializable {
 
     class RelationMatrix implements Serializable {
         private List<LinkedList<Integer>> matrix = new ArrayList<>();
-        private List<String> semanticTags = new ArrayList<>();
+        private Map<Integer, Integer> dictTag = new HashMap<>();
 
-        void add(int a, int b, String semanticTag) {
+        RelationMatrix createCopy() {
+            RelationMatrix obj = new RelationMatrix();
+            for (LinkedList<Integer> ll : this.matrix) {
+                obj.matrix.add((LinkedList<Integer>) ll.clone());
+            }
+            for (Map.Entry<Integer, Integer> entry : this.dictTag.entrySet()) {
+                obj.dictTag.put(entry.getKey(), entry.getValue());
+            }
+            return obj;
+        }
+
+        void add(int a, int b, int dictId) {
             while (matrix.size() < a + 1) {
                 matrix.add(new LinkedList<>());
-                semanticTags.add(semanticTag);
             }
             LinkedList<Integer> aRelation = matrix.get(a);
-            semanticTags.set(a, semanticTag);
+            if (dictTag.containsKey(a)) {
+                if (dictTag.get(a) != dictId) {
+                    aRelation.clear();
+                    dictTag.put(a, dictId);
+                }
+            } else {
+                dictTag.put(a, dictId);
+            }
             delete(a, b);
             aRelation.addFirst(b);
         }
@@ -52,12 +73,6 @@ public class RelationManager implements Serializable {
                 return false;
             LinkedList<Integer> aRelation = matrix.get(a);
             return aRelation.removeIf(e -> e == b);
-        }
-
-        String getSemanticTag(int i) {
-            if (semanticTags.size() <= i)
-                return null;
-            return semanticTags.get(i);
         }
 
         LinkedList<Integer> getRelations(int i) {

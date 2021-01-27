@@ -16,27 +16,23 @@
 
 package com.worksap.nlp.elasticsearch.plugins.analysis;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
-import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
-import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
-import org.apache.lucene.analysis.tokenattributes.PositionLengthAttribute;
-import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
+import org.apache.lucene.analysis.synonym.SynonymMap;
+import org.apache.lucene.analysis.tokenattributes.*;
 import org.apache.lucene.store.ByteArrayDataInput;
-import org.apache.lucene.util.AttributeSource;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.CharsRefBuilder;
-import org.apache.lucene.util.RollingBuffer;
+import org.apache.lucene.util.*;
 import org.apache.lucene.util.fst.FST;
+
+import java.io.IOException;
 
 public final class ChikkarSynonymTokenFilter extends TokenFilter {
     public static final String TYPE_SYNONYM = "SYNONYM";
+
+    private final ChikkarSynonymMap synonyms;
+
+    private final boolean ignoreCase;
+    private final int rollBufferSize;
 
     private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
     private final PositionIncrementAttribute posIncrAtt = addAttribute(PositionIncrementAttribute.class);
@@ -44,223 +40,253 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
     private final TypeAttribute typeAtt = addAttribute(TypeAttribute.class);
     private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
 
-    private final ChikkarSynonymMap synonyms;
-    private final boolean ignoreCase;
+    // How many future input tokens have already been matched
+    // to a synonym; because the matching is "greedy" we don't
+    // try to do any more matching for such tokens:
+    private int inputSkipCount;
+
+    // Hold all buffered (read ahead) stacked input tokens for
+    // a future position. When multiple tokens are at the
+    // same position, we only store (and match against) the
+    // term for the first token at the position, but capture
+    // state for (and enumerate) all other tokens at this
+    // position:
+    private static class PendingInput {
+        final CharsRefBuilder term = new CharsRefBuilder();
+        AttributeSource.State state;
+        boolean keepOrig;
+        boolean matched;
+        boolean consumed = true;
+        int startOffset;
+        int endOffset;
+
+        public void reset() {
+            state = null;
+            consumed = true;
+            keepOrig = false;
+            matched = false;
+        }
+    };
+
+    // Rolling buffer, holding pending input tokens we had to
+    // clone because we needed to look ahead, indexed by
+    // position:
+    private final ChikkarSynonymTokenFilter.PendingInput[] futureInputs;
+
+    // Holds pending output synonyms for one future position:
+    private static class PendingOutputs {
+        CharsRefBuilder[] outputs;
+        int[] endOffsets;
+        int[] posLengths;
+        int upto;
+        int count;
+        int posIncr = 1;
+        int lastEndOffset;
+        int lastPosLength;
+
+        public PendingOutputs() {
+            outputs = new CharsRefBuilder[1];
+            endOffsets = new int[1];
+            posLengths = new int[1];
+        }
+
+        public void reset() {
+            upto = count = 0;
+            posIncr = 1;
+        }
+
+        public CharsRef pullNext() {
+            assert upto < count;
+            lastEndOffset = endOffsets[upto];
+            lastPosLength = posLengths[upto];
+            final CharsRefBuilder result = outputs[upto++];
+            posIncr = 0;
+            if (upto == count) {
+                reset();
+            }
+            return result.get();
+        }
+
+        public int getLastEndOffset() {
+            return lastEndOffset;
+        }
+
+        public int getLastPosLength() {
+            return lastPosLength;
+        }
+
+        public void add(char[] output, int offset, int len, int endOffset, int posLength) {
+            if (count == outputs.length) {
+                outputs = ArrayUtil.grow(outputs, count + 1);
+            }
+            if (count == endOffsets.length) {
+                final int[] next = new int[ArrayUtil.oversize(1 + count, Integer.BYTES)];
+                System.arraycopy(endOffsets, 0, next, 0, count);
+                endOffsets = next;
+            }
+            if (count == posLengths.length) {
+                final int[] next = new int[ArrayUtil.oversize(1 + count, Integer.BYTES)];
+                System.arraycopy(posLengths, 0, next, 0, count);
+                posLengths = next;
+            }
+            if (outputs[count] == null) {
+                outputs[count] = new CharsRefBuilder();
+            }
+            outputs[count].copyChars(output, offset, len);
+            // endOffset can be -1, in which case we should simply
+            // use the endOffset of the input token, or X >= 0, in
+            // which case we use X as the endOffset for this output
+            endOffsets[count] = endOffset;
+            posLengths[count] = posLength;
+            count++;
+        }
+    };
+
+    private final ByteArrayDataInput bytesReader = new ByteArrayDataInput();
+
+    // Rolling buffer, holding stack of pending synonym
+    // outputs, indexed by position:
+    private final ChikkarSynonymTokenFilter.PendingOutputs[] futureOutputs;
+
+    // Where (in rolling buffers) to write next input saved state:
+    private int nextWrite;
+
+    // Where (in rolling buffers) to read next input saved state:
+    private int nextRead;
+
+    // True once we've read last token
+    private boolean finished;
+
+    private final FST.Arc<BytesRef> scratchArc;
 
     private final FST<BytesRef> fst;
 
     private final FST.BytesReader fstReader;
-    private final FST.Arc<BytesRef> scratchArc;
-    private final ByteArrayDataInput bytesReader = new ByteArrayDataInput();
-    private final LinkedList<ChikkarSynonymTokenFilter.BufferedOutputToken> outputBuffer = new LinkedList<>();
-
-    private int nextNodeOut;
-    private int lastNodeOut;
-    private boolean liveToken;
-
-    // Start/end offset of the current match:
-    private int matchStartOffset;
-    private int matchEndOffset;
-
-    // True once the input TokenStream is exhausted:
-    private boolean finished;
-
-    private int lookaheadNextRead;
-    private int lookaheadNextWrite;
-
-    private RollingBuffer<ChikkarSynonymTokenFilter.BufferedInputToken> lookahead = new RollingBuffer<ChikkarSynonymTokenFilter.BufferedInputToken>() {
-        @Override
-        protected ChikkarSynonymTokenFilter.BufferedInputToken newInstance() {
-            return new ChikkarSynonymTokenFilter.BufferedInputToken();
-        }
-    };
-
-    static class BufferedInputToken implements RollingBuffer.Resettable {
-        final CharsRefBuilder term = new CharsRefBuilder();
-        AttributeSource.State state;
-        int startOffset = -1;
-        int endOffset = -1;
-
-        @Override
-        public void reset() {
-            state = null;
-            term.clear();
-
-            // Intentionally invalid to ferret out bugs:
-            startOffset = -1;
-            endOffset = -1;
-        }
-    }
-
-    static class BufferedOutputToken {
-        final String term;
-
-        // Non-null if this was an incoming token:
-        final State state;
-
-        final int startNode;
-        final int endNode;
-
-        public BufferedOutputToken(State state, String term, int startNode, int endNode) {
-            this.state = state;
-            this.term = term;
-            this.startNode = startNode;
-            this.endNode = endNode;
-        }
-    }
 
     /**
-     * Constructor with argument
-     *
      * @param input
-     *            {@link org.apache.lucene.analysis.TokenStream} generated by
-     *            previous token filter
+     *            input tokenstream
      * @param synonyms
-     *            {@link ChikkarSynonymMap} for synonym matching
+     *            synonym map
      * @param ignoreCase
-     *            boolean value to indicate if need to ignore case for synonyms
+     *            case-folds input for matching with
+     *            {@link Character#toLowerCase(int)}. Note, if you set this to true,
+     *            it's your responsibility to lowercase the input entries when you
+     *            create the {@link SynonymMap}
      */
     public ChikkarSynonymTokenFilter(TokenStream input, ChikkarSynonymMap synonyms, boolean ignoreCase) {
         super(input);
         this.synonyms = synonyms;
+        this.ignoreCase = ignoreCase;
         this.fst = synonyms.fst;
         if (fst == null) {
             throw new IllegalArgumentException("fst must be non-null");
         }
         this.fstReader = fst.getBytesReader();
+
+        // Must be 1+ so that when roll buffer is at full
+        // lookahead we can distinguish this full buffer from
+        // the empty buffer:
+        rollBufferSize = 1 + synonyms.maxHorizontalContext;
+
+        futureInputs = new ChikkarSynonymTokenFilter.PendingInput[rollBufferSize];
+        futureOutputs = new ChikkarSynonymTokenFilter.PendingOutputs[rollBufferSize];
+        for (int pos = 0; pos < rollBufferSize; pos++) {
+            futureInputs[pos] = new ChikkarSynonymTokenFilter.PendingInput();
+            futureOutputs[pos] = new ChikkarSynonymTokenFilter.PendingOutputs();
+        }
+
         scratchArc = new FST.Arc<>();
-        this.ignoreCase = ignoreCase;
     }
 
-    @Override
-    public boolean incrementToken() throws IOException {
-        if (!outputBuffer.isEmpty()) {
-            // We still have pending outputs from a prior synonym match:
-            releaseBufferedToken();
-            return true;
-        }
+    private void capture() {
+        final ChikkarSynonymTokenFilter.PendingInput input = futureInputs[nextWrite];
 
-        // Try to parse a new synonym match at the current token:
-        if (parse()) {
-            // A new match was found:
-            releaseBufferedToken();
-            return true;
-        }
+        input.state = captureState();
+        input.consumed = false;
+        input.term.copyChars(termAtt.buffer(), 0, termAtt.length());
 
-        if (lookaheadNextRead == lookaheadNextWrite) {
-            // Fast path: parse pulled one token, but it didn't match
-            // the start for any synonym, so we now return it "live" w/o having
-            // cloned all of its atts:
-            if (finished) {
-                return false;
-            }
+        nextWrite = rollIncr(nextWrite);
 
-            liveToken = false;
-
-            // NOTE: no need to change posInc since it's relative, i.e. whatever
-            // node our output is upto will just increase by the incoming posInc.
-            // We also don't need to change posLen, but only because we cannot
-            // consume a graph, so the incoming token can never span a future
-            // synonym match.
-        } else {
-            // We still have buffered lookahead tokens from a previous
-            // parse attempt that required lookahead; just replay them now:
-            BufferedInputToken token = lookahead.get(lookaheadNextRead);
-            lookaheadNextRead++;
-
-            restoreState(token.state);
-            lookahead.freeBefore(lookaheadNextRead);
-        }
-
-        lastNodeOut += posIncrAtt.getPositionIncrement();
-        nextNodeOut = lastNodeOut + posLenAtt.getPositionLength();
-
-        return true;
+        // Buffer head should never catch up to tail:
+        assert nextWrite != nextRead;
     }
 
-    private void releaseBufferedToken() {
-        BufferedOutputToken token = outputBuffer.pollFirst();
-
-        if (token.state != null) {
-            // This is an original input token (keepOrig=true case):
-            restoreState(token.state);
-        } else {
-            clearAttributes();
-            termAtt.append(token.term);
-
-            // We better have a match already:
-            offsetAtt.setOffset(matchStartOffset, matchEndOffset);
-            typeAtt.setType(TYPE_SYNONYM);
-        }
-
-        posIncrAtt.setPositionIncrement(token.startNode - lastNodeOut);
-        lastNodeOut = token.startNode;
-        posLenAtt.setPositionLength(token.endNode - token.startNode);
-    }
-
-    /**
-     * Scans the next input token(s) to see if a synonym matches. Returns true if a
-     * match was found.
-     *
-     * @return Boolean value to indicate if a match was found
-     *
-     * @throws IOException
+    /*
+     * This is the core of this TokenFilter: it locates the synonym matches and
+     * buffers up the results into futureInputs/Outputs.
+     * 
+     * NOTE: this calls input.incrementToken and does not capture the state if no
+     * further tokens were checked. So caller must then forward state to our caller,
+     * or capture:
      */
-    private boolean parse() throws IOException {
+    private int lastStartOffset;
+    private int lastEndOffset;
+
+    private void parse() throws IOException {
+        assert inputSkipCount == 0;
+
+        int curNextRead = nextRead;
+
         // Holds the longest match we've seen so far:
         BytesRef matchOutput = null;
         int matchInputLength = 0;
+        int matchEndOffset = -1;
 
         BytesRef pendingOutput = fst.outputs.getNoOutput();
         fst.getFirstArc(scratchArc);
 
-        // How many tokens in the current match
-        int matchLength = 0;
-        boolean doFinalCapture = false;
+        assert scratchArc.output() == fst.outputs.getNoOutput();
 
-        int lookaheadUpto = lookaheadNextRead;
-        matchStartOffset = -1;
+        int tokenCount = 0;
 
         byToken: while (true) {
+
             // Pull next token's chars:
             final char[] buffer;
             final int bufferLen;
-            final int inputEndOffset;
 
-            if (lookaheadUpto <= lookahead.getMaxPos()) {
-                // Still in our lookahead buffer
-                BufferedInputToken token = lookahead.get(lookaheadUpto);
-                lookaheadUpto++;
-                buffer = token.term.chars();
-                bufferLen = token.term.length();
-                inputEndOffset = token.endOffset;
-                if (matchStartOffset == -1) {
-                    matchStartOffset = token.startOffset;
-                }
-            } else {
+            int inputEndOffset = 0;
+
+            if (curNextRead == nextWrite) {
+
                 // We used up our lookahead buffer of input tokens
                 // -- pull next real input token:
 
                 if (finished) {
                     break;
-                } else if (input.incrementToken()) {
-                    liveToken = true;
-                    buffer = termAtt.buffer();
-                    bufferLen = termAtt.length();
-                    if (matchStartOffset == -1) {
-                        matchStartOffset = offsetAtt.startOffset();
-                    }
-                    inputEndOffset = offsetAtt.endOffset();
-
-                    lookaheadUpto++;
                 } else {
-                    // No more input tokens
-                    finished = true;
-                    break;
+                    assert futureInputs[nextWrite].consumed;
+                    // Not correct: a syn match whose output is longer
+                    // than its input can set future inputs keepOrig
+                    // to true:
+                    // assert !futureInputs[nextWrite].keepOrig;
+                    if (input.incrementToken()) {
+                        buffer = termAtt.buffer();
+                        bufferLen = termAtt.length();
+                        final ChikkarSynonymTokenFilter.PendingInput input = futureInputs[nextWrite];
+                        lastStartOffset = input.startOffset = offsetAtt.startOffset();
+                        lastEndOffset = input.endOffset = offsetAtt.endOffset();
+                        inputEndOffset = input.endOffset;
+                        if (nextRead != nextWrite) {
+                            capture();
+                        } else {
+                            input.consumed = false;
+                        }
+                    } else {
+                        // No more input tokens
+                        finished = true;
+                        break;
+                    }
                 }
+            } else {
+                // Still in our lookahead
+                buffer = futureInputs[curNextRead].term.chars();
+                bufferLen = futureInputs[curNextRead].term.length();
+                inputEndOffset = futureInputs[curNextRead].endOffset;
             }
 
-            matchLength++;
+            tokenCount++;
 
             // Run each char in this token through the FST:
             int bufUpto = 0;
@@ -272,200 +298,222 @@ public final class ChikkarSynonymTokenFilter extends TokenFilter {
                 }
 
                 // Accum the output
-                pendingOutput = fst.outputs.add(pendingOutput, scratchArc.output);
+                pendingOutput = fst.outputs.add(pendingOutput, scratchArc.output());
                 bufUpto += Character.charCount(codePoint);
             }
 
             // OK, entire token matched; now see if this is a final
-            // state in the FST (a match):
+            // state:
             if (scratchArc.isFinal()) {
-                matchOutput = fst.outputs.add(pendingOutput, scratchArc.nextFinalOutput);
-                matchInputLength = matchLength;
+                matchOutput = fst.outputs.add(pendingOutput, scratchArc.nextFinalOutput());
+                matchInputLength = tokenCount;
                 matchEndOffset = inputEndOffset;
             }
 
-            // See if the FST can continue matching (ie, needs to
+            // See if the FST wants to continue matching (ie, needs to
             // see the next input token):
-            if (fst.findTargetArc(ChikkarSynonymMap.WORD_SEPARATOR, scratchArc, scratchArc, fstReader) == null) {
+            if (fst.findTargetArc(SynonymMap.WORD_SEPARATOR, scratchArc, scratchArc, fstReader) == null) {
                 // No further rules can match here; we're done
                 // searching for matching rules starting at the
                 // current input position.
                 break;
             } else {
-                // More matching is possible -- accum the output (if
-                // any) of the WORD_SEP arc:
-                pendingOutput = fst.outputs.add(pendingOutput, scratchArc.output);
-                doFinalCapture = true;
-                if (liveToken) {
+                // More matching is possible -- accum the output (if any) of the WORD_SEP arc:
+                pendingOutput = fst.outputs.add(pendingOutput, scratchArc.output());
+                if (nextRead == nextWrite) {
                     capture();
                 }
             }
+
+            curNextRead = rollIncr(curNextRead);
         }
 
-        if (doFinalCapture && liveToken && !finished) {
-            // Must capture the final token if we captured any prior tokens:
-            capture();
+        if (nextRead == nextWrite && !finished) {
+            nextWrite = rollIncr(nextWrite);
         }
 
         if (matchOutput != null) {
-            if (liveToken) {
-                // Single input token synonym; we must buffer it now:
-                capture();
-            }
-
-            // There is a match!
-            bufferOutputTokens(matchOutput, matchInputLength);
-            lookaheadNextRead += matchInputLength;
-            lookahead.freeBefore(lookaheadNextRead);
-            return true;
+            inputSkipCount = matchInputLength;
+            addOutput(matchOutput, matchInputLength, matchEndOffset);
+        } else if (nextRead != nextWrite) {
+            // Even though we had no match here, we set to 1
+            // because we need to skip current input token before
+            // trying to match again:
+            inputSkipCount = 1;
         } else {
-            return false;
+            assert finished;
         }
     }
 
-    /**
-     * Expands the output graph into the necessary tokens, adding synonyms as side
-     * paths parallel to the input tokens, and buffers them in the output token
-     * buffer.
-     *
-     * @param bytes
-     *            {@link BytesRef} of output bytes
-     * @param matchInputLength
-     *            match token count
-     */
-    private void bufferOutputTokens(BytesRef bytes, int matchInputLength) {
+    // Interleaves all output tokens onto the futureOutputs:
+    private void addOutput(BytesRef bytes, int matchInputLength, int matchEndOffset) {
         bytesReader.reset(bytes.bytes, bytes.offset, bytes.length);
 
         final int code = bytesReader.readVInt();
         final boolean keepOrig = (code & 0x1) == 0;
-
-        // How many nodes along all paths; we need this to assign the
-        // node ID for the final end node where all paths merge back:
-        int totalPathNodes;
-        if (keepOrig) {
-            totalPathNodes = matchInputLength - 1;
-        } else {
-            totalPathNodes = 0;
-        }
-
-        // How many synonyms we will insert over this match:
         final int count = code >>> 1;
-
-        // TODO: we could encode this instead into the FST:
-        // 1st pass: count how many new nodes we need
-        List<List<String>> paths = new ArrayList<>();
         for (int outputIDX = 0; outputIDX < count; outputIDX++) {
             int wordID = bytesReader.readVInt();
             char[] scratchChars = synonyms.chikkar.getWordsFromId(wordID).get(0).toCharArray();
+
             int lastStart = 0;
-
-            List<String> path = new ArrayList<>();
-            paths.add(path);
-            int chEnd = scratchChars.length;
-            for (int chUpto = 0; chUpto <= chEnd; chUpto++) {
-                if (chUpto == chEnd || scratchChars[chUpto] == ChikkarSynonymMap.WORD_SEPARATOR) {
-                    path.add(new String(scratchChars, lastStart, chUpto - lastStart));
-                    lastStart = 1 + chUpto;
+            final int chEnd = lastStart + scratchChars.length;
+            int outputUpto = nextRead;
+            for (int chIDX = lastStart; chIDX <= chEnd; chIDX++) {
+                if (chIDX == chEnd || scratchChars[chIDX] == SynonymMap.WORD_SEPARATOR) {
+                    final int outputLen = chIDX - lastStart;
+                    // Caller is not allowed to have empty string in
+                    // the output:
+                    assert outputLen > 0 : "output contains empty string: " + scratchChars;
+                    final int endOffset;
+                    final int posLen;
+                    if (chIDX == chEnd && lastStart == 0) {
+                        // This rule had a single output token, so, we set
+                        // this output's endOffset to the current
+                        // endOffset (ie, endOffset of the last input
+                        // token it matched):
+                        endOffset = matchEndOffset;
+                        posLen = keepOrig ? matchInputLength : 1;
+                    } else {
+                        // This rule has more than one output token; we
+                        // can't pick any particular endOffset for this
+                        // case, so, we inherit the endOffset for the
+                        // input token which this output overlaps:
+                        endOffset = -1;
+                        posLen = 1;
+                    }
+                    futureOutputs[outputUpto].add(scratchChars, lastStart, outputLen, endOffset, posLen);
+                    lastStart = 1 + chIDX;
+                    outputUpto = rollIncr(outputUpto);
+                    assert futureOutputs[outputUpto].posIncr == 1 : "outputUpto=" + outputUpto + " vs nextWrite="
+                            + nextWrite;
                 }
             }
-            totalPathNodes += path.size() - 1;
         }
 
-        // 2nd pass: buffer tokens for the graph fragment
-
-        // NOTE: totalPathNodes will be 0 in the case where the matched
-        // input is a single token and all outputs are also a single token
-
-        // We "spawn" a side-path for each of the outputs for this matched
-        // synonym, all ending back at this end node:
-
-        int startNode = nextNodeOut;
-
-        int endNode = startNode + totalPathNodes + 1;
-
-        // First, fanout all tokens departing start node for these new side paths:
-        int newNodeCount = 0;
-        for (List<String> path : paths) {
-            int pathEndNode;
-            if (path.size() == 1) {
-                // Single token output, so there are no intermediate nodes:
-                pathEndNode = endNode;
-            } else {
-                pathEndNode = nextNodeOut + newNodeCount + 1;
-                newNodeCount += path.size() - 1;
-            }
-            outputBuffer.add(new BufferedOutputToken(null, path.get(0), startNode, pathEndNode));
-        }
-
-        // We must do the original tokens last, else the offsets "go backwards":
-        if (keepOrig) {
-            BufferedInputToken token = lookahead.get(lookaheadNextRead);
-            int inputEndNode;
-            if (matchInputLength == 1) {
-                // Single token matched input, so there are no intermediate nodes:
-                inputEndNode = endNode;
-            } else {
-                inputEndNode = nextNodeOut + newNodeCount + 1;
-            }
-
-            outputBuffer.add(new BufferedOutputToken(token.state, token.term.toString(), startNode, inputEndNode));
-        }
-
-        nextNodeOut = endNode;
-
-        // Do full side-path for each syn output:
-        for (int pathID = 0; pathID < paths.size(); pathID++) {
-            List<String> path = paths.get(pathID);
-            if (path.size() > 1) {
-                int lastNode = outputBuffer.get(pathID).endNode;
-                for (int i = 1; i < path.size() - 1; i++) {
-                    outputBuffer.add(new BufferedOutputToken(null, path.get(i), lastNode, lastNode + 1));
-                    lastNode++;
-                }
-                outputBuffer.add(new BufferedOutputToken(null, path.get(path.size() - 1), lastNode, endNode));
-            }
-        }
-
-        if (keepOrig && matchInputLength > 1) {
-            // Do full "side path" with the original tokens:
-            int lastNode = outputBuffer.get(paths.size()).endNode;
-            for (int i = 1; i < matchInputLength - 1; i++) {
-                BufferedInputToken token = lookahead.get(lookaheadNextRead + i);
-                outputBuffer.add(new BufferedOutputToken(token.state, token.term.toString(), lastNode, lastNode + 1));
-                lastNode++;
-            }
-            BufferedInputToken token = lookahead.get(lookaheadNextRead + matchInputLength - 1);
-            outputBuffer.add(new BufferedOutputToken(token.state, token.term.toString(), lastNode, endNode));
+        int upto = nextRead;
+        for (int idx = 0; idx < matchInputLength; idx++) {
+            futureInputs[upto].keepOrig |= keepOrig;
+            futureInputs[upto].matched = true;
+            upto = rollIncr(upto);
         }
     }
 
-    /**
-     * Buffers the current input token into lookahead buffer.
-     */
-    private void capture() {
-        liveToken = false;
-        BufferedInputToken token = lookahead.get(lookaheadNextWrite);
-        lookaheadNextWrite++;
+    // ++ mod rollBufferSize
+    private int rollIncr(int count) {
+        count++;
+        if (count == rollBufferSize) {
+            return 0;
+        } else {
+            return count;
+        }
+    }
 
-        token.state = captureState();
-        token.startOffset = offsetAtt.startOffset();
-        token.endOffset = offsetAtt.endOffset();
-        token.term.append(termAtt);
+    @Override
+    public boolean incrementToken() throws IOException {
+        while (true) {
+            // First play back any buffered future inputs/outputs
+            // w/o running parsing again:
+            while (inputSkipCount != 0) {
+                // At each position, we first output the original
+                // token
+
+                // TODO: maybe just a PendingState class, holding
+                // both input & outputs?
+                final ChikkarSynonymTokenFilter.PendingInput input = futureInputs[nextRead];
+                final ChikkarSynonymTokenFilter.PendingOutputs outputs = futureOutputs[nextRead];
+
+                if (!input.consumed && (input.keepOrig || !input.matched)) {
+                    if (input.state != null) {
+                        // Return a previously saved token (because we had to lookahead):
+                        restoreState(input.state);
+                    } else {
+                        // Pass-through case: return token we just pulled but didn't capture:
+                        assert inputSkipCount == 1 : "inputSkipCount=" + inputSkipCount + " nextRead=" + nextRead;
+                    }
+                    input.reset();
+                    if (outputs.count > 0) {
+                        outputs.posIncr = 0;
+                    } else {
+                        nextRead = rollIncr(nextRead);
+                        inputSkipCount--;
+                    }
+                    return true;
+                } else if (outputs.upto < outputs.count) {
+                    // Still have pending outputs to replay at this position
+                    input.reset();
+                    final int posIncr = outputs.posIncr;
+                    final CharsRef output = outputs.pullNext();
+                    clearAttributes();
+                    termAtt.copyBuffer(output.chars, output.offset, output.length);
+                    typeAtt.setType(TYPE_SYNONYM);
+                    int endOffset = outputs.getLastEndOffset();
+                    if (endOffset == -1) {
+                        endOffset = input.endOffset;
+                    }
+                    offsetAtt.setOffset(input.startOffset, endOffset);
+                    posIncrAtt.setPositionIncrement(posIncr);
+                    posLenAtt.setPositionLength(outputs.getLastPosLength());
+                    if (outputs.count == 0) {
+                        // Done with the buffered input and all outputs at this position
+                        nextRead = rollIncr(nextRead);
+                        inputSkipCount--;
+                    }
+                    return true;
+                } else {
+                    // Done with the buffered input and all outputs at this position
+                    input.reset();
+                    nextRead = rollIncr(nextRead);
+                    inputSkipCount--;
+                }
+            }
+
+            if (finished && nextRead == nextWrite) {
+                // End case: if any output syns went beyond end of input stream, enumerate them
+                // now:
+                final ChikkarSynonymTokenFilter.PendingOutputs outputs = futureOutputs[nextRead];
+                if (outputs.upto < outputs.count) {
+                    final int posIncr = outputs.posIncr;
+                    final CharsRef output = outputs.pullNext();
+                    futureInputs[nextRead].reset();
+                    if (outputs.count == 0) {
+                        nextWrite = nextRead = rollIncr(nextRead);
+                    }
+                    clearAttributes();
+                    // Keep offset from last input token:
+                    offsetAtt.setOffset(lastStartOffset, lastEndOffset);
+                    termAtt.copyBuffer(output.chars, output.offset, output.length);
+                    typeAtt.setType(TYPE_SYNONYM);
+                    posIncrAtt.setPositionIncrement(posIncr);
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+
+            // Find new synonym matches:
+            parse();
+        }
     }
 
     @Override
     public void reset() throws IOException {
         super.reset();
-        lookahead.reset();
-        lookaheadNextWrite = 0;
-        lookaheadNextRead = 0;
-        lastNodeOut = -1;
-        nextNodeOut = 0;
-        matchStartOffset = -1;
-        matchEndOffset = -1;
         finished = false;
-        liveToken = false;
-        outputBuffer.clear();
+        inputSkipCount = 0;
+        nextRead = nextWrite = 0;
+
+        // In normal usage these resets would not be needed,
+        // since they reset-as-they-are-consumed, but the app
+        // may not consume all input tokens (or we might hit an
+        // exception), in which case we have leftover state
+        // here:
+        for (ChikkarSynonymTokenFilter.PendingInput input : futureInputs) {
+            input.reset();
+        }
+        for (ChikkarSynonymTokenFilter.PendingOutputs output : futureOutputs) {
+            output.reset();
+        }
     }
 
 }

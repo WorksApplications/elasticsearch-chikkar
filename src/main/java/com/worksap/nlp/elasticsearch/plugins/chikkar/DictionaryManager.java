@@ -20,9 +20,10 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.lang.Character.isDigit;
@@ -51,28 +52,22 @@ class DictionaryManager implements Serializable {
     private static DictionaryManager dictMgn;
 
     enum LoadType {
-        ADD, MERGE, CANCEL, DIRECTED, SKIP
+        ADD, DIRECTED, SKIP
     }
 
     class LoadResult {
         LoadType loadType;
-        String semanticTag;
 
-        public LoadResult(LoadType loadType, String semanticTag) {
+        public LoadResult(LoadType loadType) {
             this.loadType = loadType;
-            this.semanticTag = semanticTag;
         }
 
         public LoadType getLoadType() {
             return this.loadType;
         }
-
-        public String getSemanticTag() {
-            return this.semanticTag;
-        }
     }
 
-    public DictionaryManager() {
+    private DictionaryManager() {
         entryMgn = new EntryManager();
     }
 
@@ -99,33 +94,15 @@ class DictionaryManager implements Serializable {
      *            singleton instance, the relation should be user level
      * @param query
      *            the head word.
-     * @param pos
-     *            partOfSpeech, value can be null.
-     * @param pronun
-     *            pronunciation, value can be null.
-     * @param semanticTag
-     *            semantic tag, value can be null.
      * @return {@code List<String>} List of phrases that satisfies the relation.
      */
-    public List<String> findRelation(RelationManager relationMgn, String query, String pos, String pronun,
-            String semanticTag) {
+    public List<String> findRelation(RelationManager relationMgn, String query) {
         List<String> rtn = new ArrayList<>();
-        if (!entryMgn.retrieveEntry(query, pos, pronun, semanticTag).isEmpty()) {
-            int u = entryMgn.retrieveEntry(query, pos, pronun, semanticTag).get(0);
+        if (!entryMgn.retrieveEntry(query).isEmpty()) {
+            int u = entryMgn.retrieveEntry(query).get(0);
             rtn = entryMgn.getWordsFromId(relationMgn.getRelationMatrix().getRelations(u));
         }
-        rtn.add(query);
         return rtn;
-    }
-
-    public String getDefaultSemanticTag(String query, String pos, String pronun) {
-        String semanticTag = null;
-        if (!entryMgn.retrieveEntry(query, pos, pronun, null).isEmpty()) {
-            int u = entryMgn.retrieveEntry(query, pos, pronun, null).get(0);
-            String word = entryMgn.getWordsFromId(u).get(0);
-            semanticTag = entryMgn.getEntries(word).get(0).getSemanticTag();
-        }
-        return semanticTag;
     }
 
     public String findLongestWordWithRelation(String input, int start, int end) {
@@ -150,22 +127,16 @@ class DictionaryManager implements Serializable {
      *            singleton instance, the relation should be user level
      * @param query
      *            the head word.
-     * @param pos
-     *            partOfSpeech, value can be null.
-     * @param pronun
-     *            pronunciation, value can be null.
-     * @param semanticTag
-     *            semantic tag, value can be null.
      * @return List of all synonym id
      */
-    public List<Integer> findSynonymId(RelationManager relationMgn, String query, String pos, String pronun,
-            String semanticTag) {
-        List<Integer> rtn = new ArrayList<>();
-        if (!entryMgn.retrieveEntry(query, pos, pronun, semanticTag).isEmpty()) {
-            int u = entryMgn.retrieveEntry(query, pos, pronun, semanticTag).get(0);
-            rtn.addAll(relationMgn.getRelationMatrix().getRelations(u));
+    public List<Integer> findSynonymId(RelationManager relationMgn, String query) {
+        List<Integer> entries = entryMgn.retrieveEntry(query);
+        if (!entries.isEmpty()) {
+            int u = entryMgn.retrieveEntry(query).get(0);
+            return relationMgn.getRelationMatrix().getRelations(u).stream().filter(r -> r != u)
+                    .collect(Collectors.toList());
         }
-        return rtn;
+        return entries;
     }
 
     /**
@@ -187,111 +158,72 @@ class DictionaryManager implements Serializable {
      *            dictionary.
      * @param line
      *            The line to parse.
-     * @param basewords
+     * @param baseWords
      *            A list contains base words of the line
      * @param relatives
      *            A list contains relative words of the line
-     * @param restrictMode
-     *            if true, then ignore all directed synonyms when parsing dictionary
-     *            line
      * @return LoadResult return load type and semantic tag.
      */
-    LoadResult loadDictionaryLine(Analyzer analyzer, String line, ArrayList<Integer> basewords,
-            ArrayList<Integer> relatives, boolean restrictMode) {
+    LoadResult loadDictionaryLine(Analyzer analyzer, String line, ArrayList<Integer> baseWords,
+            ArrayList<Integer> relatives) {
         // TODO parse dictionary file, may need modification if dictionary format change
-        // use semantic tag to help merge
-        String semanticTag = null;
 
         // SKIP
         if (line.length() < 1)
-            return new LoadResult(LoadType.SKIP, semanticTag);
+            return new LoadResult(LoadType.SKIP);
         if (line.charAt(0) == '!' && line.charAt(1) == '!')
-            return new LoadResult(LoadType.SKIP, semanticTag);
+            return new LoadResult(LoadType.SKIP);
         if (isDigit(line.charAt(0)))
-            return new LoadResult(LoadType.SKIP, semanticTag);
+            return new LoadResult(LoadType.SKIP);
 
         // DIRECTED
-        String[] directions = {};
-        if (line.split(">>").length > 1 || line.split("=>").length > 1 || line.split("<<").length > 1
-                || line.split("<=").length > 1) {
-            if (restrictMode)
-                return new LoadResult(LoadType.SKIP, semanticTag);
-            boolean left = true;
-            if (line.split(">>").length > 1)
-                directions = line.split(">>");
-            if (line.split("=>").length > 1)
-                directions = line.split("=>");
-            if (line.split("<<").length > 1) {
-                left = false;
-                directions = line.split("<<");
-            }
-            if (line.split("<=").length > 1) {
-                left = false;
-                directions = line.split("<=");
-            }
-
-            String[] last = directions[directions.length - 1].split(",");
-            semanticTag = last[last.length - 1].charAt(0) == '(' ? last[last.length - 1] : null;
+        if (line.split("=>").length > 1) {
+            String[] directions = line.split("=>");
 
             for (int i = 0; i < directions.length; i++) {
                 String[] temp = directions[i].split(",");
                 for (int j = 0; j < temp.length; j++) {
                     String word = temp[j].trim();
-                    if (word.charAt(0) != '(') {
+                    if (!word.isEmpty()) {
                         List<String> resList = analyze(analyzer, word);
                         for (String res : resList) {
-                            if (entryMgn.retrieveEntry(res, null, null, semanticTag).isEmpty()) {
-                                entryMgn.insertEntry(res, new Entry(null, null, semanticTag));
+                            if (entryMgn.retrieveEntry(res).isEmpty()) {
+                                entryMgn.insertEntry(res, new Entry());
                             }
-                            if (left && i == 0) {
-                                basewords.add(entryMgn.retrieveEntry(res, null, null, semanticTag).get(0));
-                            } else if (!left && i == directions.length - 1) {
-                                basewords.add(entryMgn.retrieveEntry(res, null, null, semanticTag).get(0));
+                            if (i == 0) {
+                                baseWords.add(entryMgn.retrieveEntry(res).get(0));
                             } else {
-                                relatives.add(entryMgn.retrieveEntry(res, null, null, semanticTag).get(0));
+                                relatives.add(entryMgn.retrieveEntry(res).get(0));
                             }
                         }
                     }
                 }
             }
-            return new LoadResult(LoadType.DIRECTED, semanticTag);
+            return new LoadResult(LoadType.DIRECTED);
         } else {
-            // MERGE, CANCEL, ADD
-            String content = line;
-            LoadType loadType = LoadType.ADD;
-            if (line.charAt(0) == '*' || line.charAt(0) == '!') {
-                content = line.substring(1);
-                if (line.charAt(0) == '*')
-                    loadType = LoadType.MERGE;
-                if (line.charAt(0) == '!')
-                    loadType = LoadType.CANCEL;
-            }
-            String[] words = content.split(",");
-            semanticTag = fillWordsToIds(analyzer, words, basewords, relatives);
-            return new LoadResult(loadType, semanticTag);
+            String[] words = line.split(",");
+            fillWordsToIds(analyzer, words, baseWords, relatives);
+            return new LoadResult(LoadType.ADD);
         }
     }
 
-    String fillWordsToIds(Analyzer analyzer, String[] words, ArrayList<Integer> basewords,
-            ArrayList<Integer> relatives) {
-        String semanticTag = words[words.length - 1].charAt(0) == '(' ? words[words.length - 1] : null;
+    void fillWordsToIds(Analyzer analyzer, String[] words, ArrayList<Integer> baseWords, ArrayList<Integer> relatives) {
         for (int i = 0; i < words.length; i++) {
             String word = words[i].trim();
-            if (word.charAt(0) != '(') {
+            if (!word.isEmpty()) {
                 List<String> resList = analyze(analyzer, word);
                 for (String res : resList) {
-                    if (entryMgn.retrieveEntry(res, null, null, semanticTag).isEmpty()) {
-                        entryMgn.insertEntry(res, new Entry(null, null, semanticTag));
+                    if (entryMgn.retrieveEntry(res).isEmpty()) {
+                        entryMgn.insertEntry(res, new Entry());
                     }
                     if (i == 0) {
-                        basewords.add(entryMgn.retrieveEntry(res, null, null, semanticTag).get(0));
+                        baseWords.add(entryMgn.retrieveEntry(res).get(0));
                     } else {
-                        relatives.add(entryMgn.retrieveEntry(res, null, null, semanticTag).get(0));
+                        relatives.add(entryMgn.retrieveEntry(res).get(0));
                     }
                 }
             }
         }
-        return semanticTag;
     }
 
     /**
@@ -309,35 +241,26 @@ class DictionaryManager implements Serializable {
      *            different users may use different analyzers(e.g. Japanese or
      *            English), so we need to pass the specific analyzer instance when
      *            addDictionary.
-     * @param restrictMode
-     *            if true, then ignore all directed synonyms when parsing dictionary
-     *            line
      * @throws IOException
      *             Throws {@link IOException} if error occur when reading dictionary
      */
-    public synchronized void addDictionary(RelationManager relationMgn, String dictPath, Analyzer analyzer,
-            boolean restrictMode) throws IOException {
+    public synchronized void addDictionary(RelationManager relationMgn, Path dictPath, Analyzer analyzer, int dictId)
+            throws IOException {
         // set the default relationSet as sparse matrix
         RelationManager.RelationMatrix relationMatrix = relationMgn.getRelationMatrix();
 
-        try (Stream<String> input = Files.lines(Paths.get(dictPath), StandardCharsets.UTF_8)) {
+        try (Stream<String> input = Files.lines(dictPath, StandardCharsets.UTF_8)) {
             input.forEach(line -> {
-                ArrayList<Integer> basewords = new ArrayList<>();
+                ArrayList<Integer> baseWords = new ArrayList<>();
                 ArrayList<Integer> relatives = new ArrayList<>();
-                LoadResult loadResult = loadDictionaryLine(analyzer, line, basewords, relatives, restrictMode);
+                LoadResult loadResult = loadDictionaryLine(analyzer, line, baseWords, relatives);
 
                 switch (loadResult.getLoadType()) {
                 case ADD:
-                    addLine(basewords, relatives, relationMatrix, loadResult.getSemanticTag());
-                    break;
-                case MERGE:
-                    mergeLine(basewords, relatives, relationMatrix, loadResult.getSemanticTag());
-                    break;
-                case CANCEL:
-                    cancelLine(basewords, relatives, relationMatrix);
+                    addLine(baseWords, relatives, relationMatrix, dictId);
                     break;
                 case DIRECTED:
-                    addDirectedLine(basewords, relatives, relationMatrix, loadResult.getSemanticTag());
+                    addDirectedLine(baseWords, relatives, relationMatrix, dictId);
                     break;
                 case SKIP:
                     break;
@@ -407,56 +330,20 @@ class DictionaryManager implements Serializable {
         return tlist;
     }
 
-    void addLine(ArrayList<Integer> basewords, ArrayList<Integer> relatives,
-            RelationManager.RelationMatrix relationMatrix, String semanticTag) {
+    void addLine(ArrayList<Integer> baseWords, ArrayList<Integer> relatives,
+            RelationManager.RelationMatrix relationMatrix, int dictId) {
         ArrayList<Integer> words = new ArrayList<>();
-        words.addAll(basewords);
+        words.addAll(baseWords);
         words.addAll(relatives);
         words.forEach(a -> words.forEach(b -> {
-            if (!a.equals(b)) {
-                relationMatrix.add(a, b, semanticTag);
-            }
+            relationMatrix.add(a, b, dictId);
         }));
     }
 
-    void mergeLine(ArrayList<Integer> basewords, ArrayList<Integer> relatives,
-            RelationManager.RelationMatrix relationMatrix, String semanticTag) {
-        ArrayList<Integer> previous = new ArrayList<>();
-        basewords.stream()
-                .filter(a -> (relationMatrix.getSemanticTag(a) == null && semanticTag == null)
-                        || relationMatrix.getSemanticTag(a).equals(semanticTag))
-                .forEach(a -> previous.addAll(relationMatrix.getRelations(a)));
-        relatives.forEach(a -> previous.forEach(b -> {
-            // Todo check if the semantic tag is the same
-            relationMatrix.add(a, b, semanticTag);
-            relationMatrix.add(b, a, semanticTag);
-        }));
-        addLine(basewords, relatives, relationMatrix, semanticTag);
-    }
-
-    void cancelLine(ArrayList<Integer> basewords, ArrayList<Integer> relatives,
-            RelationManager.RelationMatrix relationMatrix) {
-        ArrayList<Integer> words = new ArrayList<>();
-        words.addAll(basewords);
-        words.addAll(relatives);
-        words.forEach(a -> words.forEach(b -> {
-            if (!a.equals(b)) {
-                relationMatrix.delete(a, b);
-            }
-        }));
-    }
-
-    void addDirectedLine(ArrayList<Integer> basewords, ArrayList<Integer> relatives,
-            RelationManager.RelationMatrix relationMatrix, String semanticTag) {
-        basewords.forEach(a -> relatives.forEach(b -> {
-            relationMatrix.add(a, b, semanticTag);
-            relationMatrix.delete(b, a);
-        }));
-
-        relatives.forEach(a -> relatives.forEach(b -> {
-            if (!a.equals(b)) {
-                relationMatrix.delete(a, b);
-            }
+    void addDirectedLine(ArrayList<Integer> baseWords, ArrayList<Integer> relatives,
+            RelationManager.RelationMatrix relationMatrix, int dictId) {
+        baseWords.forEach(a -> relatives.forEach(b -> {
+            relationMatrix.add(a, b, dictId);
         }));
     }
 }

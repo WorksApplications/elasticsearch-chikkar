@@ -51,7 +51,7 @@ class EntryManager implements Serializable {
      */
     void insertEntry(String input, Entry entry) {
         if (!vocabulary.contains(input)) {
-            vocabulary.insert(input, new ArrayList<Entry>());
+            vocabulary.insert(input, new ArrayList<>());
         }
         entry.setId(id2word.size());
         vocabulary.get(input).add(entry);
@@ -64,43 +64,24 @@ class EntryManager implements Serializable {
 
     /**
      * This method retrieves all related `Entry` associated with the given `input`
-     * String. The result can be further narrowed by `partOfSpeech` and
-     * `pronunciation` info if provided.
+     * String.
      * <p>
-     * `input` is mandatory. `partOfSpeech` and `pronunciation` are optional which
-     * can be null. However, the user is responsible for supplying the null value.
+     * `input` is mandatory.
      * <p>
      * The returned result only contains the `Entry ID`s instead of `Entry`s stored
      * in a List.
      *
      * @param input
      *            The String that the user wants to query.
-     * @param partOfSpeech
-     *            The user can supply partOfSpeech to narrow down search range. The
-     *            value can be null. However, the user has to specify the null
-     *            value.
-     * @param pronunciation
-     *            The user can supply pronunciation to narrow down search range. The
-     *            value can be null. However, the user has to specify the null
-     *            value.
-     * @param semanticTag
-     *            The user can supply semanticTag to narrow down search range. The
-     *            value can be null. However, the user has to specify the null
-     *            value.
      *
      * @return {@code List<Integer>} Return a list of integers, containing the Entry
      *         ID instead of the whole Entry.
      */
-    List<Integer> retrieveEntry(String input, String partOfSpeech, String pronunciation, String semanticTag) {
+    List<Integer> retrieveEntry(String input) {
         List<Entry> entries = vocabulary.get(input);
         if (entries == null)
             return Collections.emptyList();
-
-        return entries.stream()
-                .filter(e -> (partOfSpeech == null || partOfSpeech.equals(e.getPartOfSpeech()))
-                        && (pronunciation == null || pronunciation.equals(e.getPronunciation()))
-                        && (semanticTag == null || semanticTag.equals(e.getSemanticTag())))
-                .map(Entry::getId).collect(Collectors.toList());
+        return entries.stream().map(Entry::getId).collect(Collectors.toList());
     }
 
     /**

@@ -26,10 +26,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class EntryManagerTest {
-    static final int LIST_SIZE = 2;
-    static String posList[] = { "1", "2" };
-    static String pronunList[] = { "p", "r" };
-    static String semanticTagList[] = { "tag1", "tag2" };
     static List<String> vocab = new ArrayList<>();
     static EntryManager manager = new EntryManager();
 
@@ -40,90 +36,18 @@ public class EntryManagerTest {
         }
 
         for (String word : vocab) {
-            for (int i = 0; i < LIST_SIZE; ++i) {
-                for (int j = 0; j < LIST_SIZE; ++j) {
-                    for (int k = 0; k < LIST_SIZE; ++k) {
-                        manager.insertEntry(word, new Entry(pronunList[i], posList[j], semanticTagList[k]));
-                    }
-                }
-            }
+            manager.insertEntry(word, new Entry());
         }
     }
 
     @Test
-    public void testRetrieveEntryWithoutAdditionalInfo() {
-        List<Integer> found = null;
+    public void testRetrieveEntry() {
+        List<Integer> found;
         for (int i = 0; i < vocab.size(); ++i) {
             String word = vocab.get(i);
-            found = manager.retrieveEntry(word, null, null, null);
-            assertEquals(LIST_SIZE * LIST_SIZE * LIST_SIZE, found.size());
-            for (int idx : found) {
-                assertEquals(i, idx / (LIST_SIZE * LIST_SIZE * LIST_SIZE));
-            }
-        }
-    }
-
-    @Test
-    public void testRetrieveEntryWithPOS() {
-        List<Integer> found = null;
-        for (int i = 0; i < vocab.size(); ++i) {
-            String word = vocab.get(i);
-            for (int j = 0; j < LIST_SIZE; ++j) {
-                found = manager.retrieveEntry(word, posList[j], null, null);
-                assertEquals(LIST_SIZE * LIST_SIZE, found.size());
-                for (int idx : found) {
-                    assertEquals(i, idx / (LIST_SIZE * LIST_SIZE * LIST_SIZE));
-                }
-            }
-        }
-    }
-
-    @Test
-    public void testRetrieveEntryWithPronunciation() {
-        List<Integer> found = null;
-        for (int i = 0; i < vocab.size(); ++i) {
-            String word = vocab.get(i);
-            for (int j = 0; j < LIST_SIZE; ++j) {
-                found = manager.retrieveEntry(word, null, pronunList[j], null);
-                assertEquals(LIST_SIZE * LIST_SIZE, found.size());
-                for (int idx : found) {
-                    assertEquals(i, idx / (LIST_SIZE * LIST_SIZE * LIST_SIZE));
-                }
-            }
-        }
-    }
-
-    @Test
-    public void testRetrieveEntryWithSemanticTag() {
-        List<Integer> found = null;
-        for (int i = 0; i < vocab.size(); ++i) {
-            String word = vocab.get(i);
-            for (int j = 0; j < LIST_SIZE; ++j) {
-                found = manager.retrieveEntry(word, null, null, semanticTagList[j]);
-                assertEquals(LIST_SIZE * LIST_SIZE, found.size());
-                for (int idx : found) {
-                    assertEquals(i, idx / (LIST_SIZE * LIST_SIZE * LIST_SIZE));
-                }
-            }
-        }
-    }
-
-    @Test
-    public void testRetrieveEntryWithFullInfo() {
-        List<Integer> found = null;
-        for (int k = 0; k < vocab.size(); ++k) {
-            String word = vocab.get(k);
-            for (int i = 0; i < LIST_SIZE; ++i) {
-                for (int j = 0; j < LIST_SIZE; ++j) {
-                    for (int m = 0; m < LIST_SIZE; ++m) {
-                        found = manager.retrieveEntry(word, posList[i], pronunList[j], semanticTagList[m]);
-                        assertEquals(1, found.size());
-                        for (int idx : found) {
-                            assertEquals(k, idx / (LIST_SIZE * LIST_SIZE * LIST_SIZE));
-                        }
-                    }
-                }
-            }
+            found = manager.retrieveEntry(word);
+            assertEquals(1, found.size());
+            assertEquals(i, found.get(0).longValue());
         }
     }
 
@@ -133,21 +57,15 @@ public class EntryManagerTest {
         for (char ch = 'a'; ch <= 'z'; ++ch) {
             List<Integer> indices = new ArrayList<>();
             List<String> expected = new ArrayList<>();
-            for (int i = 0; i < LIST_SIZE; ++i) {
-                for (int j = 0; j < LIST_SIZE; ++j) {
-                    for (int k = 0; k < LIST_SIZE; ++k) {
-                        indices.add(idx++);
-                        expected.add(Character.toString(ch));
-                    }
-                }
-            }
+            indices.add(idx++);
+            expected.add(Character.toString(ch));
             assertEquals(expected, manager.getWordsFromId(indices));
         }
     }
 
     @Test
     public void testRetrieveNonExistEntry() {
-        List<Integer> found = manager.retrieveEntry("non-exist", null, null, null);
+        List<Integer> found = manager.retrieveEntry("non-exist");
         assertTrue(found.isEmpty());
     }
 
@@ -157,7 +75,7 @@ public class EntryManagerTest {
         StringBuilder sb = new StringBuilder();
         for (char ch = 'a'; ch <= 'h'; ++ch) {
             sb.append(ch);
-            manager.insertEntry(sb.toString(), new Entry(null, null, null));
+            manager.insertEntry(sb.toString(), new Entry());
         }
 
         sb.delete(0, sb.length());
