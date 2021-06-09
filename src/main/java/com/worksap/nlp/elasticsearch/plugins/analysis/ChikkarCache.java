@@ -26,9 +26,11 @@ public class ChikkarCache {
     private static ChikkarCache chikkarCache = null;
 
     private Map<String, Chikkar> systemDictCache;
+    private Map<String, String> systemDictTimeStamp;
 
     private ChikkarCache() {
         this.systemDictCache = new HashMap<>();
+        this.systemDictTimeStamp = new HashMap<>();
     }
 
     public static synchronized ChikkarCache getInstance() {
@@ -38,12 +40,17 @@ public class ChikkarCache {
         return chikkarCache;
     }
 
-    public synchronized void put(String key, Chikkar value) {
+    public synchronized void put(String key, Chikkar value, String time) {
         systemDictCache.put(key, value);
+        systemDictTimeStamp.put(key, time);
     }
 
     public synchronized Chikkar getSystemDictCache(String key) {
         return systemDictCache.get(key);
+    }
+
+    public synchronized String getSystemDictTimeStamp(String key) {
+        return systemDictTimeStamp.get(key);
     }
 
 }

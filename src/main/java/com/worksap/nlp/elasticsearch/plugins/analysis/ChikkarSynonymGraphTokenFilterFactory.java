@@ -44,6 +44,7 @@ public class ChikkarSynonymGraphTokenFilterFactory extends AbstractTokenFilterFa
     private final boolean ignoreCase;
     private final boolean enableDictCache;
     private final String systemDictId;
+    private final String systemDictTimeStamp;
     private final String systemDict;
     private final List<String> userDictList;
     protected final Settings settings;
@@ -69,6 +70,7 @@ public class ChikkarSynonymGraphTokenFilterFactory extends AbstractTokenFilterFa
         this.ignoreCase = settings.getAsBoolean("ignore_case", false);
         this.enableDictCache = settings.getAsBoolean("enable_cache", false);
         this.systemDictId = settings.get("system_dict_id", "dummy_system_dict");
+        this.systemDictTimeStamp = settings.get("system_dict_timestamp", "1612927494");
         this.systemDict = settings.get("system_dict");
         this.userDictList = settings.getAsList("user_dict_list");
         this.settings = settings;
@@ -145,8 +147,17 @@ public class ChikkarSynonymGraphTokenFilterFactory extends AbstractTokenFilterFa
             if (chikkarSystem == null) {
                 chikkarSystem = new Chikkar(analyzer);
                 chikkarSystem.loadDictionary(environment.configFile().resolve(systemDict));
-                ChikkarCache.getInstance().put(systemDictCacheKey, chikkarSystem);
+                ChikkarCache.getInstance().put(systemDictCacheKey, chikkarSystem, systemDictTimeStamp);
             }
+
+            String time = ChikkarCache.getInstance().getSystemDictTimeStamp(systemDictCacheKey);
+            if (!time.equals(systemDictTimeStamp)) {
+                chikkarSystem.clear();
+                chikkarSystem = new Chikkar(analyzer);
+                chikkarSystem.loadDictionary(environment.configFile().resolve(systemDict));
+                ChikkarCache.getInstance().put(systemDictCacheKey, chikkarSystem, systemDictTimeStamp);
+            }
+
             Chikkar chikkarUser = Chikkar.clone(chikkarSystem);
             for (String dp : userDictList) {
                 chikkarUser.loadDictionary(environment.configFile().resolve(dp));

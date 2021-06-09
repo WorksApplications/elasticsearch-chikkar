@@ -36,6 +36,13 @@ public class RelationManager implements Serializable {
         return this.relationMatrix;
     }
 
+    public void clear() {
+        if (relationMatrix != null) {
+            relationMatrix.clear();
+            relationMatrix = null;
+        }
+    }
+
     class RelationMatrix implements Serializable {
         private List<LinkedList<Integer>> matrix = new ArrayList<>();
         private Map<Integer, Integer> dictTag = new HashMap<>();
@@ -49,6 +56,11 @@ public class RelationManager implements Serializable {
                 obj.dictTag.put(entry.getKey(), entry.getValue());
             }
             return obj;
+        }
+
+        void clear() {
+            this.matrix.clear();
+            this.dictTag.clear();
         }
 
         void add(int a, int b, int dictId) {

@@ -53,6 +53,14 @@ public class Chikkar {
         return newObj;
     }
 
+    public void clear() {
+        dictMgn = null;
+        if (relationMgn != null) {
+            relationMgn.clear();
+            relationMgn = null;
+        }
+    }
+
     /**
      * Constructor with argument
      *
