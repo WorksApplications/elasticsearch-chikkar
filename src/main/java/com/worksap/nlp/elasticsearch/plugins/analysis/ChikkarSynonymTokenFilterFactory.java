@@ -38,6 +38,7 @@ public class ChikkarSynonymTokenFilterFactory extends AbstractTokenFilterFactory
 
     private final boolean ignoreCase;
     private final boolean enableDictCache;
+    private final boolean enableNormalize;
     private final String systemDictId;
     private final String systemDictTimeStamp;
     private final String systemDict;
@@ -64,6 +65,7 @@ public class ChikkarSynonymTokenFilterFactory extends AbstractTokenFilterFactory
         // get the filter setting params
         this.ignoreCase = settings.getAsBoolean("ignore_case", false);
         this.enableDictCache = settings.getAsBoolean("enable_cache", false);
+        this.enableNormalize = settings.getAsBoolean("enable_normalize", true);
         this.systemDictId = settings.get("system_dict_id", "dummy_system_dict");
         this.systemDictTimeStamp = settings.get("system_dict_timestamp", "1612927494");
         this.systemDict = settings.get("system_dict");
@@ -118,8 +120,12 @@ public class ChikkarSynonymTokenFilterFactory extends AbstractTokenFilterFactory
 
     Analyzer buildSynonymAnalyzer(TokenizerFactory tokenizer, List<CharFilterFactory> charFilters,
             List<TokenFilterFactory> tokenFilters) {
-        return new CustomAnalyzer(tokenizer, charFilters.toArray(new CharFilterFactory[0]),
-                tokenFilters.stream().map(TokenFilterFactory::getSynonymFilter).toArray(TokenFilterFactory[]::new));
+        if (enableNormalize) {
+            return new CustomAnalyzer(tokenizer, charFilters.toArray(new CharFilterFactory[0]),
+                    tokenFilters.stream().map(TokenFilterFactory::getSynonymFilter).toArray(TokenFilterFactory[]::new));
+        } else {
+            return null;
+        }
     }
 
     ChikkarSynonymMap buildUserSynonyms(Analyzer analyzer) {

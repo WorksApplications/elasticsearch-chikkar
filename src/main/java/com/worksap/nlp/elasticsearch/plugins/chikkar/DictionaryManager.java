@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -280,6 +281,10 @@ class DictionaryManager implements Serializable {
      * @return List of analyzed result text
      */
     List<String> analyze(Analyzer analyzer, String text) {
+        if (analyzer == null) {
+            return Collections.singletonList(text);
+        }
+
         CharsRefBuilder reuse = new CharsRefBuilder();
         reuse.clear();
 
