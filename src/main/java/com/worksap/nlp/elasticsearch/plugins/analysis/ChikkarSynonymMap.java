@@ -147,6 +147,8 @@ public class ChikkarSynonymMap {
             }
 
             FST<BytesRef> fst = builder.finish();
+            // remove unused relation manager
+            chikkar.clearRelation();
             return new ChikkarSynonymMap(chikkar, fst, maxHorizontalContext);
         }
     }

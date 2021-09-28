@@ -61,6 +61,13 @@ public class Chikkar {
         }
     }
 
+    public void clearRelation() {
+        if (relationMgn != null) {
+            relationMgn.clear();
+            relationMgn = null;
+        }
+    }
+
     /**
      * Constructor with argument
      *
