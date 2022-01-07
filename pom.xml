@@ -54,7 +54,7 @@
         <lucene.version>8.5.1</lucene.version>
         <elasticsearch.version>7.8.1</elasticsearch.version>
         <elasticsearch.plugin.classname>com.worksap.nlp.elasticsearch.plugins.AnalysisChikkarPlugin</elasticsearch.plugin.classname>
-        <sudachi.version>0.4.3</sudachi.version>
+        <sudachi.version>0.5.3</sudachi.version>
     </properties>
     <build>
         <plugins>
