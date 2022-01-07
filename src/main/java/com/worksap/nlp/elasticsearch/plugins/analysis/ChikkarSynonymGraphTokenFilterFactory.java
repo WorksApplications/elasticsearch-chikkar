@@ -16,7 +16,12 @@
 
 package com.worksap.nlp.elasticsearch.plugins.analysis;
 
-import com.worksap.nlp.elasticsearch.plugins.chikkar.Chikkar;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.List;
+import java.util.function.Function;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
@@ -24,21 +29,20 @@ import org.apache.lucene.analysis.TokenStream;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
-import org.elasticsearch.index.analysis.*;
+import org.elasticsearch.index.analysis.AbstractTokenFilterFactory;
+import org.elasticsearch.index.analysis.CharFilterFactory;
+import org.elasticsearch.index.analysis.CustomAnalyzer;
+import org.elasticsearch.index.analysis.TokenFilterFactory;
+import org.elasticsearch.index.analysis.TokenizerFactory;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.List;
-import java.util.function.Function;
+import com.worksap.nlp.elasticsearch.plugins.chikkar.Chikkar;
 
-public class ChikkarSynonymTokenFilterFactory extends AbstractTokenFilterFactory {
+public class ChikkarSynonymGraphTokenFilterFactory extends AbstractTokenFilterFactory {
 
-    private static final Logger log = LogManager.getLogger(ChikkarSynonymTokenFilterFactory.class);
+    private static final Logger log = LogManager.getLogger(ChikkarSynonymGraphTokenFilterFactory.class);
 
     private final boolean ignoreCase;
     private final boolean enableDictCache;
-    private final boolean enableNormalize;
     private final String systemDictId;
     private final String systemDictTimeStamp;
     private final String systemDict;
@@ -58,14 +62,13 @@ public class ChikkarSynonymTokenFilterFactory extends AbstractTokenFilterFactory
      * @param settings
      *            {@link Settings} of this token filter
      */
-    public ChikkarSynonymTokenFilterFactory(IndexSettings indexSettings, Environment env, String name,
+    public ChikkarSynonymGraphTokenFilterFactory(IndexSettings indexSettings, Environment env, String name,
             Settings settings) {
         super(indexSettings, name, settings);
 
         // get the filter setting params
         this.ignoreCase = settings.getAsBoolean("ignore_case", false);
         this.enableDictCache = settings.getAsBoolean("enable_cache", false);
-        this.enableNormalize = settings.getAsBoolean("enable_normalize", true);
         this.systemDictId = settings.get("system_dict_id", "dummy_system_dict");
         this.systemDictTimeStamp = settings.get("system_dict_timestamp", "1612927494");
         this.systemDict = settings.get("system_dict");
@@ -113,19 +116,15 @@ public class ChikkarSynonymTokenFilterFactory extends AbstractTokenFilterFactory
             @Override
             public TokenStream create(TokenStream tokenStream) {
                 return synonyms.fst == null ? tokenStream
-                        : new ChikkarSynonymTokenFilter(tokenStream, synonyms, ignoreCase);
+                        : new ChikkarSynonymGraphTokenFilter(tokenStream, synonyms, ignoreCase);
             }
         };
     }
 
     Analyzer buildSynonymAnalyzer(TokenizerFactory tokenizer, List<CharFilterFactory> charFilters,
             List<TokenFilterFactory> tokenFilters) {
-        if (enableNormalize) {
-            return new CustomAnalyzer(tokenizer, charFilters.toArray(new CharFilterFactory[0]),
-                    tokenFilters.stream().map(TokenFilterFactory::getSynonymFilter).toArray(TokenFilterFactory[]::new));
-        } else {
-            return null;
-        }
+        return new CustomAnalyzer(tokenizer, charFilters.toArray(new CharFilterFactory[0]),
+                tokenFilters.stream().map(TokenFilterFactory::getSynonymFilter).toArray(TokenFilterFactory[]::new));
     }
 
     ChikkarSynonymMap buildUserSynonyms(Analyzer analyzer) {

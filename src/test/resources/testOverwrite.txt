@@ -1,0 +1,2 @@
+A,D,G
+AA => CC, DD

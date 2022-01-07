@@ -16,8 +16,6 @@
 
 package com.worksap.nlp.elasticsearch.plugins.chikkar;
 
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,9 +36,6 @@ import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
-import org.nustaq.serialization.FSTConfiguration;
-import org.nustaq.serialization.FSTObjectInput;
-import org.nustaq.serialization.FSTObjectOutput;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
@@ -54,178 +49,240 @@ public class ChikkarTest {
     static Chikkar chikkar;
     static Chikkar chikkar2;
     static Chikkar chikkar3;
-    static Chikkar chikkarSer;
-
-    static List<String> expectList = new ArrayList<>();
+    static Chikkar chikkar4;
 
     @ClassRule
     public static TemporaryFolder tempFolder = new TemporaryFolder();
 
-    static final String[][] groups = { { "曖昧", "不明確", "あやふや", "あいまい" },
-            { "粗筋", "概略", "大略", "概要", "大要", "要約", "要旨", "梗概" }, { "粗筋", "荒筋", "あらすじ" } };
-
-    static final String[][] test = { { "A", "B", "D", "E", "G", }, { "B", "A", "C", "F", "G" }, { "C", "B", "G" },
-            { "D", "A", "E", "F", "G" }, { "E", "A", "D", "F", "G" }, { "F", "D", "E", "G", "B" },
-            { "G", "A", "D", "F", "E", "B", "C" },
-
-            // index 7 (org)
-            { "A", "K", "L", "O", "M", "C", "H", "X" }, { "K", "A", "L", "O", "M" }, { "L", "K", "A", "O", "M" },
-            { "O", "K", "A", "L", "M" }, { "C" }, { "X" }, { "H" }, { "J", "A", "I" }, { "I" },
-
-            // index 16 (Wiki)
-            { "X", "Z", "W" }, { "Y", "Z", "W" }, { "Z" }, { "W" } };
-
     @BeforeClass
-    public static void setUpBeforeClass() throws IOException, ClassNotFoundException {
+    public static void setUpBeforeClass() throws IOException {
         TokenizerFactory tokenizer = new WhitespaceTokenizerFactory();
         List<CharFilterFactory> charFilters = new ArrayList<>();
         List<TokenFilterFactory> tokenFilters = new ArrayList<>();
 
-        analyzer = new CustomAnalyzer("synonyms", tokenizer, charFilters.toArray(new CharFilterFactory[0]),
+        analyzer = new CustomAnalyzer(tokenizer, charFilters.toArray(new CharFilterFactory[0]),
                 tokenFilters.stream().map(TokenFilterFactory::getSynonymFilter).toArray(TokenFilterFactory[]::new));
 
-        String nameA1 = "synonymMergeA1.txt";
-        String nameA2 = "synonymMergeA2.txt";
         String nameTest = "test.txt";
+        String nameOverWrite = "testOverwrite.txt";
         String nameDirected = "directed.txt";
+        String nameMerge = "synonymMergeA.txt";
 
         tempFolder.create();
         final String tempPath = tempFolder.getRoot().getAbsolutePath();
-        Path pathA1 = Paths.get(tempPath, nameA1);
-        Path pathA2 = Paths.get(tempPath, nameA2);
         Path pathTest = Paths.get(tempPath, nameTest);
+        Path pathTestOverWrite = Paths.get(tempPath, nameOverWrite);
         Path pathDirected = Paths.get(tempPath, nameDirected);
+        Path pathMerge = Paths.get(tempPath, nameMerge);
 
-        Files.copy(ChikkarTest.class.getResourceAsStream("/" + nameA1), pathA1);
-        Files.copy(ChikkarTest.class.getResourceAsStream("/" + nameA2), pathA2);
         Files.copy(ChikkarTest.class.getResourceAsStream("/" + nameTest), pathTest);
+        Files.copy(ChikkarTest.class.getResourceAsStream("/" + nameOverWrite), pathTestOverWrite);
         Files.copy(ChikkarTest.class.getResourceAsStream("/" + nameDirected), pathDirected);
+        Files.copy(ChikkarTest.class.getResourceAsStream("/" + nameMerge), pathMerge);
 
         chikkar = new Chikkar(analyzer);
-        chikkar.loadDictionary(pathA1.toString());
-        chikkar.loadDictionary(pathA2.toString());
-        chikkar.loadDictionary(pathTest.toString());
+        chikkar.loadDictionary(pathTest);
 
-        chikkar2 = new Chikkar(analyzer, true);
-        chikkar2.loadDictionary(pathDirected.toString());
+        chikkar2 = new Chikkar(analyzer);
+        chikkar2.loadDictionary(pathDirected);
 
-        chikkar3 = new Chikkar(analyzer, false);
-        chikkar3.loadDictionary(pathDirected.toString());
+        chikkar3 = new Chikkar(analyzer);
+        chikkar3.loadDictionary(pathTest);
+        chikkar3.loadDictionary(pathTestOverWrite);
 
-        Path binPath = Paths.get(tempPath, "chikkarDict.bin");
-        final FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
-
-        try (FileOutputStream fileOut = new FileOutputStream(binPath.toFile());
-                FSTObjectOutput out = conf.getObjectOutput(fileOut)) {
-            chikkar.dumpToStream(out);
-        }
-
-        try (FileInputStream fileIn = new FileInputStream(binPath.toFile());
-                FSTObjectInput in = conf.getObjectInput(fileIn)) {
-            chikkarSer = new Chikkar(analyzer, in);
-        }
+        chikkar4 = new Chikkar(analyzer);
+        chikkar4.loadDictionary(pathMerge);
     }
 
     @Test
     public void testGetWithMerge() {
-        for (int i = 0; i < 7; i++) {
-            expectList.clear();
-            List<String> rtn = chikkar.get(test[i][0], null, null);
-            Collections.sort(rtn);
-            expectList.addAll(Arrays.asList(test[i]));
-            Collections.sort(expectList);
-            assertEquals(expectList, rtn);
-        }
+        List<String> rtn = chikkar.get("A");
+        List<String> expectList = Arrays.asList("A", "B", "C", "D", "E", "F", "G");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar.get("B");
+        expectList = Arrays.asList("A", "B", "C");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar.get("C");
+        expectList = Arrays.asList("A", "B", "C", "F");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar.get("D");
+        expectList = Arrays.asList("A", "D", "E");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar.get("E");
+        expectList = Arrays.asList("A", "D", "E");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar.get("F");
+        expectList = Arrays.asList("A", "C", "F", "G");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar.get("G");
+        expectList = Arrays.asList("A", "F", "G");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar4.get("曖昧");
+        expectList = Arrays.asList("曖昧", "不明確", "あやふや", "あいまい");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
     }
 
     @Test
     public void testGetWithDirect() {
-        for (int i = 16; i < 20; i++) {
-            expectList.clear();
-            List<String> rtn = chikkar.get(test[i][0], null, null, "(Wiki)");
-            Collections.sort(rtn);
-            expectList.addAll(Arrays.asList(test[i]));
-            Collections.sort(expectList);
-            assertEquals(expectList, rtn);
-        }
-    }
-
-    @Test
-    public void testGetWithRestrictMode() {
-        /**
-         * A,B,C A>>D C>>D
-         */
-
-        // restrict mode on
-        List<String> rtn = chikkar2.get("A", null, null, null);
+        List<String> rtn = chikkar.get("AA");
+        List<String> expectList = Arrays.asList("BB", "CC", "DD", "FF");
         Collections.sort(rtn);
-        assertEquals(Arrays.asList("A", "B", "C"), rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
 
-        rtn = chikkar2.get("B", null, null, null);
+        rtn = chikkar.get("BB");
+        expectList = Arrays.asList("CC", "DD");
         Collections.sort(rtn);
-        assertEquals(Arrays.asList("A", "B", "C"), rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
 
-        rtn = chikkar2.get("C", null, null, null);
+        rtn = chikkar.get("CC");
+        expectList = Arrays.asList("DD", "EE");
         Collections.sort(rtn);
-        assertEquals(Arrays.asList("A", "B", "C"), rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
 
-        rtn = chikkar2.get("D", null, null, null);
+        rtn = chikkar.get("DD");
+        expectList = Arrays.asList("DD", "EE");
         Collections.sort(rtn);
-        assertEquals(Arrays.asList("D"), rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
 
-        // restrict mode off
-        rtn = chikkar3.get("A", null, null, null);
+        rtn = chikkar.get("EE");
+        expectList = Collections.emptyList();
         Collections.sort(rtn);
-        assertEquals(Arrays.asList("A", "B", "C", "D"), rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
 
-        rtn = chikkar3.get("B", null, null, null);
+        rtn = chikkar.get("FF");
+        expectList = Collections.emptyList();
         Collections.sort(rtn);
-        assertEquals(Arrays.asList("A", "B", "C"), rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
 
-        rtn = chikkar3.get("C", null, null, null);
+        rtn = chikkar2.get("A");
         Collections.sort(rtn);
         assertEquals(Arrays.asList("A", "B", "C", "D"), rtn);
 
-        rtn = chikkar3.get("D", null, null, null);
+        rtn = chikkar2.get("B");
         Collections.sort(rtn);
-        assertEquals(Arrays.asList("D"), rtn);
+        assertEquals(Arrays.asList("A", "B", "C"), rtn);
+
+        rtn = chikkar2.get("C");
+        Collections.sort(rtn);
+        assertEquals(Arrays.asList("A", "B", "C", "D"), rtn);
+
+        rtn = chikkar2.get("D");
+        Collections.sort(rtn);
+        assertEquals(Collections.emptyList(), rtn);
+
+        rtn = chikkar2.get("ABC");
+        Collections.sort(rtn);
+        assertEquals(Arrays.asList("DEF"), rtn);
     }
 
     @Test
-    public void testGetWithMergeTag() {
-        for (int i = 7; i < 16; i++) {
-            expectList.clear();
-            List<String> rtn = chikkar.get(test[i][0], null, null, "(org)");
-            Collections.sort(rtn);
-            expectList.addAll(Arrays.asList(test[i]));
-            Collections.sort(expectList);
-            assertEquals(expectList, rtn);
-        }
-    }
+    public void testGetWithOverwrite() {
+        List<String> rtn = chikkar3.get("A");
+        List<String> expectList = Arrays.asList("A", "D", "G");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
 
-    @Test
-    public void testGet() {
-        for (int i = 0; i < groups.length; ++i) {
-            for (int j = 0; j < groups[i].length; ++j) {
-                List<String> rtn = chikkar.get(groups[i][j]);
-                Collections.sort(rtn);
+        rtn = chikkar3.get("B");
+        expectList = Arrays.asList("A", "B", "C");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
 
-                if (j == 0 && i != 0) {
-                    expectList.clear();
-                    expectList.addAll(Arrays.asList(groups[1]));
-                    expectList.add("あらすじ");
-                    expectList.add("荒筋");
-                    Collections.sort(expectList);
-                    assertEquals(expectList, rtn);
-                    continue;
-                }
+        rtn = chikkar3.get("C");
+        expectList = Arrays.asList("A", "B", "C", "F");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
 
-                expectList.clear();
-                expectList.addAll(Arrays.asList(groups[i]));
-                Collections.sort(expectList);
-                assertEquals(expectList, rtn);
-            }
-        }
+        rtn = chikkar3.get("D");
+        expectList = Arrays.asList("A", "D", "G");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar3.get("E");
+        expectList = Arrays.asList("A", "D", "E");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar3.get("F");
+        expectList = Arrays.asList("A", "C", "F", "G");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar3.get("G");
+        expectList = Arrays.asList("A", "D", "G");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar3.get("AA");
+        expectList = Arrays.asList("CC", "DD");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar3.get("BB");
+        expectList = Arrays.asList("CC", "DD");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar3.get("CC");
+        expectList = Arrays.asList("DD", "EE");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar3.get("DD");
+        expectList = Arrays.asList("DD", "EE");
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar3.get("EE");
+        expectList = Collections.emptyList();
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
+
+        rtn = chikkar3.get("FF");
+        expectList = Collections.emptyList();
+        Collections.sort(rtn);
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
     }
 
     @Test
@@ -239,123 +296,45 @@ public class ChikkarTest {
         morphemeList.add(mor1);
         morphemeList.add(mor2);
 
-        List<String> rtn = chikkar.find(morphemeList, 0, 2);
+        List<String> rtn = chikkar4.find(morphemeList, 0, 2);
         Collections.sort(rtn);
 
-        expectList.clear();
-        expectList.addAll(Arrays.asList(groups[2]));
+        List<String> expectList = Arrays.asList("粗筋", "荒筋", "あらすじ");
         Collections.sort(expectList);
         assertEquals(expectList, rtn);
     }
 
     @Test
     public void testFindWithPosition() {
-        List<String> rtn = chikkar.find("概略のあいまい", 3, 7);
+        List<String> rtn = chikkar4.find("概略のあいまい", 3, 7);
         Collections.sort(rtn);
+        List<String> expectList = Arrays.asList("曖昧", "あいまい");
+        Collections.sort(expectList);
+        assertEquals(expectList, rtn);
 
-        expectList.clear();
-        expectList.addAll(Arrays.asList(groups[0]));
+        rtn = chikkar4.find("概略の曖昧", 3, 5);
+        Collections.sort(rtn);
+        expectList = Arrays.asList("曖昧", "不明確", "あやふや", "あいまい");
         Collections.sort(expectList);
         assertEquals(expectList, rtn);
     }
 
     @Test
     public void testFind() {
-        List<String> rtn = chikkar.find("概略のあいまい");
+        List<String> rtn = chikkar4.find("概略のあいまい");
         Collections.sort(rtn);
 
-        expectList.clear();
-        expectList.addAll(Arrays.asList(groups[1]));
-        Collections.sort(expectList);
-        assertEquals(expectList, rtn);
-    }
-
-    @Test
-    public void testChikkarSerialization() {
-        for (int i = 0; i < 7; i++) {
-            List<String> rtn = chikkarSer.get(test[i][0], null, null);
-            Collections.sort(rtn);
-            expectList.clear();
-            expectList.addAll(Arrays.asList(test[i]));
-            Collections.sort(expectList);
-            assertEquals(expectList, rtn);
-        }
-
-        for (int i = 7; i < 16; i++) {
-            List<String> rtn = chikkarSer.get(test[i][0], null, null, "(org)");
-            Collections.sort(rtn);
-            expectList.clear();
-            expectList.addAll(Arrays.asList(test[i]));
-            Collections.sort(expectList);
-            assertEquals(expectList, rtn);
-        }
-
-        for (int i = 16; i < 20; i++) {
-            List<String> rtn = chikkarSer.get(test[i][0], null, null, "(Wiki)");
-            Collections.sort(rtn);
-            expectList.clear();
-            expectList.addAll(Arrays.asList(test[i]));
-            Collections.sort(expectList);
-            assertEquals(expectList, rtn);
-        }
-
-        for (int i = 0; i < groups.length; ++i) {
-            for (int j = 0; j < groups[i].length; ++j) {
-                List<String> rtn = chikkarSer.get(groups[i][j]);
-                Collections.sort(rtn);
-
-                if (j == 0 && i != 0) {
-                    expectList.clear();
-                    expectList.addAll(Arrays.asList(groups[1]));
-                    expectList.add("あらすじ");
-                    expectList.add("荒筋");
-                    Collections.sort(expectList);
-                    assertEquals(expectList, rtn);
-                    continue;
-                }
-
-                expectList.clear();
-                expectList.addAll(Arrays.asList(groups[i]));
-                Collections.sort(expectList);
-                assertEquals(expectList, rtn);
-            }
-        }
-
-        Morpheme mor1 = mock(Morpheme.class);
-        Morpheme mor2 = mock(Morpheme.class);
-        when(mor1.surface()).thenReturn("曖昧");
-        when(mor2.surface()).thenReturn("あらすじ");
-
-        List<Morpheme> morphemeList = new ArrayList<>();
-        morphemeList.add(mor1);
-        morphemeList.add(mor2);
-
-        List<String> rtn = chikkarSer.find(morphemeList, 0, 2);
-        Collections.sort(rtn);
-
-        expectList.clear();
-        expectList.addAll(Arrays.asList(groups[2]));
-        Collections.sort(expectList);
-        assertEquals(expectList, rtn);
-
-        rtn = chikkarSer.find("概略のあいまい", 3, 7);
-        Collections.sort(rtn);
-
-        expectList.clear();
-        expectList.addAll(Arrays.asList(groups[0]));
-        Collections.sort(expectList);
-        assertEquals(expectList, rtn);
-
-        rtn = chikkarSer.find("概略のあいまい");
-        Collections.sort(rtn);
-
-        expectList.clear();
-        expectList.addAll(Arrays.asList(groups[1]));
+        List<String> expectList = Arrays.asList("粗筋", "概略", "大略", "概要", "大要", "要約", "要旨", "梗概");
         Collections.sort(expectList);
         assertEquals(expectList, rtn);
     }
 
     static class WhitespaceTokenizerFactory implements TokenizerFactory {
+        @Override
+        public String name() {
+            return "WhitespaceTokenizer";
+        }
+
         @Override
         public Tokenizer create() {
             return new WhitespaceTokenizer();
