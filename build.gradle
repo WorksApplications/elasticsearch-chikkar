@@ -1,0 +1,62 @@
+plugins {
+    id 'java-library'
+    id 'org.sonarqube' version '3.3'
+    id 'jacoco'
+}
+
+group = 'com.worksap.nlp'
+archivesBaseName = 'analysis-chikkar'
+version = '2.0.22-SNAPSHOT'
+
+tasks.withType(JavaCompile) {
+    options.release = 11
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation "org.elasticsearch.client:transport:${elasticsearchVersion}", "org.codelibs.elasticsearch.module:analysis-common:${elasticsearchVersion}",
+        'com.worksap.nlp:sudachi:0.5.3', 'com.github.takawitter:trie4j:0.9.8', 'com.google.guava:guava:27.0.1-jre'
+    testImplementation "org.elasticsearch.test:framework:${elasticsearchVersion}", 'org.mockito:mockito-core:2.27.0'
+    testRuntimeOnly "org.apache.logging.log4j:log4j-core:2.17.1"
+}
+
+def embedVersion = tasks.register('embedVersion', Copy) {
+    from 'src/main/extras/plugin-descriptor.properties'
+    into 'build/descriptor'
+    expand([version: version, elasticsearchVersion: elasticsearchVersion, javaVersion: 11])
+}
+
+def copyDependencies = tasks.register('copyDependencies', Copy) {
+    def excludelibs = ['transport', 'analysis-common']
+    from configurations.compileClasspath.files { dep -> !excludelibs.contains(dep.name)}
+    into 'build/libs'
+}
+
+def distZip = tasks.register('distZip', Zip) {
+    dependsOn 'jar', embedVersion, copyDependencies
+    archiveBaseName = archivesBaseName
+    archiveAppendix = elasticsearchVersion
+    from 'build/libs/', 'build/descriptor', 'LICENSE', 'README.md'
+}
+
+artifacts {
+    archives distZip
+}
+
+sonarqube {
+  properties {
+    property "sonar.projectKey", "WorksApplications_elasticsearch-chikkar"
+    property "sonar.organization", "worksapplications"
+    property "sonar.host.url", "https://sonarcloud.io"
+  }
+}
+
+jacocoTestReport {
+    reports {
+        xml.required = true
+    }
+    dependsOn test
+}
