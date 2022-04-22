@@ -14,6 +14,12 @@ tasks.withType(JavaCompile) {
 
 repositories {
     mavenCentral()
+    maven {
+        url "https://maven.codelibs.org"
+        content {
+            includeGroup "org.codelibs.elasticsearch.module"
+        }
+    }
 }
 
 dependencies {

@@ -23,6 +23,7 @@ import org.apache.lucene.analysis.synonym.SynonymFilter;
 import org.apache.lucene.analysis.synonym.SynonymMap;
 import org.elasticsearch.analysis.common.ESSolrSynonymParser;
 import org.elasticsearch.analysis.common.ESWordnetSynonymParser;
+import org.elasticsearch.common.logging.DeprecationCategory;
 import org.elasticsearch.common.logging.DeprecationLogger;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
@@ -35,8 +36,7 @@ import java.util.List;
 import java.util.function.Function;
 
 public class ModSynonymTokenFilterFactory extends AbstractTokenFilterFactory {
-    private static final DeprecationLogger DEPRECATION_LOGGER = new DeprecationLogger(
-            LogManager.getLogger(ModSynonymTokenFilterFactory.class));
+    private static final DeprecationLogger DEPRECATION_LOGGER = DeprecationLogger.getLogger(ModSynonymTokenFilterFactory.class);
 
     private final String format;
     private final boolean expand;
@@ -50,9 +50,11 @@ public class ModSynonymTokenFilterFactory extends AbstractTokenFilterFactory {
         this.settings = settings;
 
         if (settings.get("ignore_case") != null) {
-            DEPRECATION_LOGGER.deprecatedAndMaybeLog("synonym_ignore_case_option",
-                    "The ignore_case option on the synonym_graph filter is deprecated. "
-                            + "Instead, insert a lowercase filter in the filter chain before the synonym_graph filter.");
+            DEPRECATION_LOGGER.warn(
+                DeprecationCategory.ANALYSIS,
+                "synonym_ignore_case_option",
+                "The ignore_case option on the synonym_graph filter is deprecated. "
+                    + "Instead, insert a lowercase filter in the filter chain before the synonym_graph filter.");
         }
 
         this.expand = settings.getAsBoolean("expand", true);
