@@ -23,10 +23,9 @@ repositories {
 }
 
 dependencies {
-    implementation "org.elasticsearch.client:transport:${elasticsearchVersion}", "org.codelibs.elasticsearch.module:analysis-common:${elasticsearchVersion}",
-        'com.worksap.nlp:sudachi:0.5.3', 'com.github.takawitter:trie4j:0.9.8', 'com.google.guava:guava:27.0.1-jre'
-    testImplementation "org.elasticsearch.test:framework:${elasticsearchVersion}", 'org.mockito:mockito-core:2.27.0'
-    testRuntimeOnly "org.apache.logging.log4j:log4j-core:2.17.1"
+    implementation 'com.worksap.nlp:sudachi:0.7.0', 'com.github.takawitter:trie4j:0.9.8', 'com.google.guava:guava:27.0.1-jre'
+    compileOnly "org.elasticsearch:elasticsearch:${elasticsearchVersion}"
+    testImplementation "org.elasticsearch:elasticsearch:${elasticsearchVersion}", "org.elasticsearch.test:framework:${elasticsearchVersion}", 'org.mockito:mockito-core:2.27.0', "org.apache.logging.log4j:log4j-core:2.17.1"
 }
 
 def embedVersion = tasks.register('embedVersion', Copy) {
@@ -36,7 +35,7 @@ def embedVersion = tasks.register('embedVersion', Copy) {
 }
 
 def copyDependencies = tasks.register('copyDependencies', Copy) {
-    def excludelibs = ['transport', 'analysis-common']
+    def excludelibs = ['elasticsearch']
     from configurations.compileClasspath.files { dep -> !excludelibs.contains(dep.name)}
     into 'build/libs'
 }

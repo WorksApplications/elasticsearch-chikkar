@@ -16,13 +16,12 @@
 
 package com.worksap.nlp.elasticsearch.plugins.analysis;
 
-import org.apache.logging.log4j.LogManager;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.synonym.SynonymFilter;
 import org.apache.lucene.analysis.synonym.SynonymMap;
-import org.elasticsearch.analysis.common.ESSolrSynonymParser;
-import org.elasticsearch.analysis.common.ESWordnetSynonymParser;
+import org.apache.lucene.analysis.synonym.SolrSynonymParser;
+import org.apache.lucene.analysis.synonym.WordnetSynonymParser;
 import org.elasticsearch.common.logging.DeprecationCategory;
 import org.elasticsearch.common.logging.DeprecationLogger;
 import org.elasticsearch.common.settings.Settings;
@@ -119,11 +118,11 @@ public class ModSynonymTokenFilterFactory extends AbstractTokenFilterFactory {
         try {
             SynonymMap.Builder parser;
             if ("wordnet".equalsIgnoreCase(format)) {
-                parser = new ESWordnetSynonymParser(true, expand, lenient, analyzer);
-                ((ESWordnetSynonymParser) parser).parse(rules);
+                parser = new WordnetSynonymParser(true, expand, analyzer);
+                ((WordnetSynonymParser) parser).parse(rules);
             } else {
-                parser = new ESSolrSynonymParser(true, expand, lenient, analyzer);
-                ((ESSolrSynonymParser) parser).parse(rules);
+                parser = new SolrSynonymParser(true, expand, analyzer);
+                ((SolrSynonymParser) parser).parse(rules);
             }
             return parser.build();
         } catch (Exception e) {
