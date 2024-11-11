@@ -28,6 +28,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
+import org.elasticsearch.index.IndexService.IndexCreationContext;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.AbstractTokenFilterFactory;
 import org.elasticsearch.index.analysis.CharFilterFactory;
@@ -64,7 +65,7 @@ public class ChikkarSynonymGraphTokenFilterFactory extends AbstractTokenFilterFa
      */
     public ChikkarSynonymGraphTokenFilterFactory(IndexSettings indexSettings, Environment env, String name,
             Settings settings) {
-        super(indexSettings, name, settings);
+        super(name, settings);
 
         // get the filter setting params
         this.ignoreCase = settings.getAsBoolean("ignore_case", false);
@@ -84,7 +85,7 @@ public class ChikkarSynonymGraphTokenFilterFactory extends AbstractTokenFilterFa
     }
 
     @Override
-    public TokenFilterFactory getChainAwareTokenFilterFactory(TokenizerFactory tokenizer,
+    public TokenFilterFactory getChainAwareTokenFilterFactory(IndexCreationContext context, TokenizerFactory tokenizer,
             List<CharFilterFactory> charFilters, List<TokenFilterFactory> previousTokenFilters,
             Function<String, TokenFilterFactory> allFilters) {
         final Analyzer analyzer = buildSynonymAnalyzer(tokenizer, charFilters, previousTokenFilters);

@@ -27,6 +27,7 @@ import org.elasticsearch.common.logging.DeprecationLogger;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.index.IndexService.IndexCreationContext;
 import org.elasticsearch.index.analysis.*;
 
 import java.io.Reader;
@@ -45,7 +46,7 @@ public class ModSynonymTokenFilterFactory extends AbstractTokenFilterFactory {
     protected final AnalysisMode analysisMode;
 
     public ModSynonymTokenFilterFactory(IndexSettings indexSettings, Environment env, String name, Settings settings) {
-        super(indexSettings, name, settings);
+        super(name, settings);
         this.settings = settings;
 
         if (settings.get("ignore_case") != null) {
@@ -76,7 +77,7 @@ public class ModSynonymTokenFilterFactory extends AbstractTokenFilterFactory {
     }
 
     @Override
-    public TokenFilterFactory getChainAwareTokenFilterFactory(TokenizerFactory tokenizer,
+    public TokenFilterFactory getChainAwareTokenFilterFactory(IndexCreationContext context, TokenizerFactory tokenizer,
             List<CharFilterFactory> charFilters, List<TokenFilterFactory> previousTokenFilters,
             Function<String, TokenFilterFactory> allFilters) {
         final Analyzer analyzer = buildSynonymAnalyzer(tokenizer, charFilters, previousTokenFilters, allFilters);
@@ -140,7 +141,7 @@ public class ModSynonymTokenFilterFactory extends AbstractTokenFilterFactory {
             }
             rulesReader = new StringReader(sb.toString());
         } else if (settings.get("synonyms_path") != null) {
-            rulesReader = Analysis.getReaderFromFile(env, settings, "synonyms_path");
+            rulesReader = Analysis.getReaderFromFile(env, settings.get("synonyms_path"), "synonyms");
         } else {
             throw new IllegalArgumentException(
                     "synonym requires either `synonyms` or `synonyms_path` to be configured");

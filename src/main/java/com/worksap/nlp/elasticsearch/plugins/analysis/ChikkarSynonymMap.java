@@ -77,8 +77,8 @@ public class ChikkarSynonymMap {
         public ChikkarSynonymMap build(Chikkar chikkar) throws IOException {
             ByteSequenceOutputs outputs = ByteSequenceOutputs.getSingleton();
             // TODO: are we using the best sharing options?
-            org.apache.lucene.util.fst.Builder<BytesRef> builder = new org.apache.lucene.util.fst.Builder<>(
-                    FST.INPUT_TYPE.BYTE4, outputs);
+            org.apache.lucene.util.fst.FSTCompiler<BytesRef> fstCompiler =
+                new org.apache.lucene.util.fst.FSTCompiler.Builder<>(FST.INPUT_TYPE.BYTE4, outputs).build();
 
             BytesRefBuilder scratch = new BytesRefBuilder();
             ByteArrayDataOutput scratchOutput = new ByteArrayDataOutput();
@@ -143,10 +143,10 @@ public class ChikkarSynonymMap {
                 }
 
                 scratch.setLength(scratchOutput.getPosition());
-                builder.add(Util.toUTF32(input, scratchIntsRef), scratch.toBytesRef());
+                fstCompiler.add(Util.toUTF32(input, scratchIntsRef), scratch.toBytesRef());
             }
 
-            FST<BytesRef> fst = builder.finish();
+            FST<BytesRef> fst = FST.fromFSTReader(fstCompiler.compile(), fstCompiler.getFSTReader());
             // remove unused relation manager
             chikkar.clearRelation();
             return new ChikkarSynonymMap(chikkar, fst, maxHorizontalContext);

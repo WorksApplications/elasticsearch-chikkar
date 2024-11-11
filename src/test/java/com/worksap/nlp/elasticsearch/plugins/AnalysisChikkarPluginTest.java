@@ -41,6 +41,7 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.index.IndexService.IndexCreationContext;
 import org.elasticsearch.index.analysis.CharFilterFactory;
 import org.elasticsearch.index.analysis.CustomAnalyzer;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
@@ -1211,7 +1212,7 @@ public class AnalysisChikkarPluginTest {
 
         assertTrue(factory instanceof ChikkarSynonymGraphTokenFilterFactory);
 
-        return factory.getChainAwareTokenFilterFactory(tokenizer, charFilters, tokenFilters, null);
+        return factory.getChainAwareTokenFilterFactory(IndexCreationContext.CREATE_INDEX, tokenizer, charFilters, tokenFilters, null);
     }
 
     TokenFilterFactory createChikkarSynonymFactory(Path configPath, String dictPath, String dictId,
@@ -1237,7 +1238,7 @@ public class AnalysisChikkarPluginTest {
 
         assertTrue(factory instanceof ChikkarSynonymTokenFilterFactory);
 
-        return factory.getChainAwareTokenFilterFactory(tokenizer, charFilters, tokenFilters, null);
+        return factory.getChainAwareTokenFilterFactory(IndexCreationContext.CREATE_INDEX, tokenizer, charFilters, tokenFilters, null);
     }
 
     TokenFilterFactory createSynonymFactory(Path configPath, String dictPath, TokenizerFactory tokenizer,
@@ -1257,7 +1258,7 @@ public class AnalysisChikkarPluginTest {
 
         TokenFilterFactory factory = new ModSynonymTokenFilterFactory(indexSettings, env, "mod_synonym", settings);
 
-        return factory.getChainAwareTokenFilterFactory(tokenizer, charFilters, tokenFilters, null);
+        return factory.getChainAwareTokenFilterFactory(IndexCreationContext.CREATE_INDEX, tokenizer, charFilters, tokenFilters, null);
     }
 
     void assertSynonymsEquals(List<TokenAttribute> expected, List<TokenAttribute> actual) {

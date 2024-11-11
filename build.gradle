@@ -23,7 +23,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.worksap.nlp:sudachi:0.7.0', 'com.github.takawitter:trie4j:0.9.8', 'com.google.guava:guava:27.0.1-jre'
+    implementation 'com.worksap.nlp:sudachi:0.7.4', 'com.github.takawitter:trie4j:0.9.8', 'com.google.guava:guava:27.0.1-jre'
     compileOnly "org.elasticsearch:elasticsearch:${elasticsearchVersion}"
     testImplementation "org.elasticsearch:elasticsearch:${elasticsearchVersion}", "org.elasticsearch.test:framework:${elasticsearchVersion}", 'org.mockito:mockito-core:2.27.0', "org.apache.logging.log4j:log4j-core:2.17.1"
 }
