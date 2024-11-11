@@ -1,8 +1,5 @@
 # elasticsearch-chikkar
 
-[![Build Status](https://github.com/WorksApplications/elasticsearch-chikkar/actions/workflows/gradle.yml/badge.svg)](https://github.com/WorksApplications/elasticsearch-chikkar/actions/workflows/gradle.yml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=com.worksap.nlp%3Aanalysis-chikkar&metric=alert_status)](https://sonarcloud.io/dashboard?id=com.worksap.nlp%3Aanalysis-chikkar)
-
 This project will be merged into [elasticsearch-sudachi](https://github.com/WorksApplications/elasticsearch-sudachi).
 
 A synonym token filter plugin for Elasticsearch
